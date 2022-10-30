@@ -1,0 +1,10 @@
+{
+    "authKey": "make one lol",
+    "keys": {
+        "spotify": {
+            "clientID": "spotify client id",
+            "cllientSecret": "spotify client secret"
+        },
+        "genius": "genuis api token"
+    }
+}
