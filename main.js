@@ -96,10 +96,15 @@ module.exports = ({app, auth}) => {
             error: false,
             message: `IP wasn't registered!`
         })
-    })
+    });
+
+    let keys = require('./config.json').keys
 
     app.get(`/getConfigKeys`, async (req, res) => {
-        res.send(require(`./config.json`).keys)
+        try {
+            keys = JSON.parse(require('fs').readFileSync(`./config.json`)).keys
+        } catch(e) {};
+        res.send(keys)
     })
 
     const run = (req, res, specifiedUrl) => new Promise(async (resp, rej) => {
