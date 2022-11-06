@@ -79,8 +79,8 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                 let args = [
                     json.url,
                     //`--no-keep-video`,
-                    `--extract-audio`,
-                    `--audio-format`, `opus`,
+                    //`--extract-audio`,
+                    //`--audio-format`, `opus`,
                     `-P`, fileLocation.split(`/`).slice(0, -1).join(`/`),
                     `-o`, `%(id)s.%(ext)s`,
                     `--no-part`
