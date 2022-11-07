@@ -101,7 +101,9 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                         height: 1024,
                     };
     
-                    input.entries = input.entries.map(json => {    
+                    input.entries = input.entries.map(json => { 
+                        console.log(json.url, json.webpage_url)
+                        
                         const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
                             url: `https://i.nyx.bot/null.png`,
                             width: 1024,
