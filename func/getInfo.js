@@ -74,41 +74,103 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
             }).catch(rej)
         };
 
-        const processInfo = (json) => {
-            console.log(`got metadata for ${link} -- ${json.title}`);
+        const processInfo = (input) => {
+            console.log(`got metadata for ${link} -- ${input.title}`);
 
-            json.selectedFormat = json.formats.sort((a, b) => {
-                return a.quality - b.quality
-            })
+            const thisId = require(`../util`).idGen(8)
 
-            const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
-                url: `https://i.nyx.bot/null.png`,
-                width: 1024,
-                height: 1024,
-            };
-    
-            json.thumbnail = thumbnail;
+            fs.writeFileSync(`./etc/${thisId}.json`, JSON.stringify(input, null, 4));
 
-            json.nyxData = {
-                downloadedLengthInMs: 0,
-                lastUpdate: Date.now(),
-            };
+            if(input.entries && typeof input.entries == `object`) {
+                console.log(`THIS IS A PLAYLIST! Parsing as such (entries length: ${input.entries.length})`);
 
-            json.url = link;
+                if(!input.entries[0].duration) {
+                    console.log(`Duration is missing on entries!`)
+                    return ytdl.execPromise(`${link} --dump-single-json --skip-download`.split(` `)).then(i => {
+                        processInfo(JSON.parse(i))
+                    }).catch(e => {
+                        console.error(e);
+                        res(null)
+                    });
+                } else {
+                    let obj = input;
     
-            global.streamCache[link] = json;
-            global.streamCache[origLink] = json;
+                    obj.thumbnail = obj.thumbnails && obj.thumbnails.length > 0 ? obj.thumbnails.slice(-1)[0] : {
+                        url: `https://i.nyx.bot/null.png`,
+                        width: 1024,
+                        height: 1024,
+                    };
     
-            setTimeout(() => {
-                delete global.streamCache[link];
-                delete global.streamCache[origLink];
-            }, 4.32e+7);
+                    input.entries = input.entries.map(json => {    
+                        const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
+                            url: `https://i.nyx.bot/null.png`,
+                            width: 1024,
+                            height: 1024,
+                        };
+                
+                        json.thumbnail = thumbnail;
+        
+                        json.nyxData = {
+                            downloadedLengthInMs: 0,
+                            lastUpdate: Date.now(),
+                            thisId,
+                        };
     
-            res(json);
+                        return json;
+                    });
+    
+                    global.streamCache[link] = obj;
+                    global.streamCache[origLink] = obj;
+            
+                    setTimeout(() => {
+                        delete global.streamCache[link];
+                        delete global.streamCache[origLink];
+                    }, 4.32e+7);
+    
+                    res(obj)
+                }
+            } else {
+                const json = input;
+                
+                console.log(`this is NOT a playlist.`)
+
+                json.selectedFormat = json.formats.sort((a, b) => {
+                    return a.quality - b.quality
+                })
+
+                const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
+                    url: `https://i.nyx.bot/null.png`,
+                    width: 1024,
+                    height: 1024,
+                };
+        
+                json.thumbnail = thumbnail;
+
+                json.nyxData = {
+                    downloadedLengthInMs: 0,
+                    lastUpdate: Date.now(),
+                    thisId,
+                };
+
+                json.url = link;
+        
+                global.streamCache[link] = json;
+                global.streamCache[origLink] = json;
+        
+                setTimeout(() => {
+                    delete global.streamCache[link];
+                    delete global.streamCache[origLink];
+                }, 4.32e+7);
+        
+                res(json);
+            }
         }
 
-        ytdl.getVideoInfo(`${link} --extractor-args "youtube:skip=hls,dash,translated_subs;player_skip=webpage,js" -e --no-check-certificate --skip-download --youtube-skip-dash-manifest`).then(processInfo).catch(e => {
-            ytdl.getVideoInfo(link).then(processInfo)
-        })
+        ytdl.execPromise(`${link} --dump-single-json --flat-playlist --skip-download`.split(` `)).then(i => {
+            processInfo(JSON.parse(i))
+        }).catch(e => {
+            console.error(e);
+            res(null)
+        });
     }
 })
