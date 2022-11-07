@@ -21,9 +21,17 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
             }
         };
 
-        const json = global.streamCache[input];
+        let json = global.streamCache[input];
 
         if(!json || !json.url) return rej(`No streamable link! (input: ${input})`, global.streamCache[input]);
+
+        const jsonFileID = require(`../util`).idGen(8);
+
+        const nyxData = json.nyxData; delete json.nyxData;
+
+        //fs.writeFileSync(`./etc/${jsonFileID}.json`, JSON.stringify(json, null, 4));
+
+        json.nyxData = nyxData;
 
         const domain = json.extractor;
         const id = json.id;
@@ -74,17 +82,21 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                     } else {
                         return rej(`Unable to stream audio! (This source is not allowing me to play anything!)`)
                     }
-                }
+                };
 
                 let args = [
-                    json.url,
                     //`--no-keep-video`,
                     //`--extract-audio`,
                     //`--audio-format`, `opus`,
                     `-P`, fileLocation.split(`/`).slice(0, -1).join(`/`),
                     `-o`, `%(id)s.%(ext)s`,
-                    `--no-part`
+                    `--no-part`,
+                    `--cache-dir`, `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/yt-dlp-cache`
                 ], format_id = null;
+
+                if(fs.existsSync(`./etc/${jsonFileID}.json`)) {
+                    args.push(`--load-info-json`, `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${jsonFileID}.json`)
+                } else args.push(json.url)
 
                 console.log(`best audio bitrate: ${bestAudio.abr} with sampling rate of ${bestAudio.asr}`);
     
@@ -110,7 +122,9 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                     }
                 };
 
-                args.push(`--format`, `${format_id}`)
+                args.push(`--format`, `${format_id}`);
+
+                console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"`)
 
                 let playback = ytdl.exec(args);
     
@@ -136,6 +150,8 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
         
                 playback.once(`close`, () => {
                     const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
+
+                    if(fs.existsSync(`./etc/${jsonFileID}.json`)) fs.rmSync(`./etc/${jsonFileID}.json`)
 
                     if(waitUntilComplete) {
                         console.log(`returning file`)

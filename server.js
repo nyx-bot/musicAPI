@@ -19,6 +19,10 @@ if(fs.existsSync(`./etc/`)) {
         });
     };
 
+    for(j of fs.readdirSync(`./etc/`).filter(f => f.endsWith(`.json`))) {
+        fs.rmSync(`./etc/${j}`)
+    }
+
     if(fs.existsSync(`./etc/yt-dlp`)) fs.unlinkSync(`./etc/yt-dlp`)
 }
 
