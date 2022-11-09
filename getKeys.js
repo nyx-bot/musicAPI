@@ -49,17 +49,36 @@ module.exports = (k) => new Promise(async res => {
             let tmpYtdl = require(`yt-dlp-wrap`).default;
             const latest = (await tmpYtdl.getGithubReleases(1))[0], assets = latest.assets;
 
-            let asset = assets.find(o => o.browser_download_url.toString().toLowerCase().includes(process.platform.toLowerCase()) ? true : false)
+            const latestId = latest.id
 
-            tmpYtdl.downloadFromGithub( ytdlPath, latest.tag_name ).then(() => {
-                if(fs.existsSync(ytdlPath)) {
-                    console.log(`successfully downloaded temporary binary!`)
-                } else {
-                    console.log(`path has not been verified! youtube compatibility may be hindered`)
-                };
+            ytdlPath = `${__dirname}/etc/yt-dlp-${latestId}`;
 
+            let list = fs.readdirSync(`./etc/`).filter(s => 
+                s.startsWith(`yt-dlp`) && 
+                !s.includes(`.`) &&
+                !ytdlPath.includes(s) && 
+                fs.existsSync(`./etc/${s}/`)
+            )
+
+            for (existing of list) {
+                console.log(`Deleting yt-dlp at ${existing}`);
+                fs.rmSync(`./etc/` + existing);
+            };
+
+            if(!fs.existsSync(ytdlPath)) {
+                tmpYtdl.downloadFromGithub( ytdlPath, latest.tag_name ).then(() => {
+                    if(fs.existsSync(ytdlPath)) {
+                        console.log(`successfully downloaded temporary binary!`)
+                    } else {
+                        console.log(`path has not been verified! youtube compatibility may be hindered`)
+                    };
+
+                    res()
+                })
+            } else {
+                console.log(`Latest yt-dlp exists! (v. ${latestId})`);
                 res()
-            })
+            }
         })
     } catch(e) {
         console.warn(`failed to download yt-dlp: ${e}`);

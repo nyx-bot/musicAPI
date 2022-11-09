@@ -23,7 +23,7 @@ if(fs.existsSync(`./etc/`)) {
         fs.rmSync(`./etc/${j}`)
     }
 
-    if(fs.existsSync(`./etc/yt-dlp`)) fs.unlinkSync(`./etc/yt-dlp`)
+    if(fs.existsSync(`./etc/yt-dlp`)) fs.rmSync(`./etc/yt-dlp`)
 }
 
 const update = () => new Promise((res, rej) => {
