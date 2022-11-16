@@ -168,7 +168,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
             }
         }
 
-        ytdl.execPromise(`${link} --dump-single-json --flat-playlist --skip-download`.split(` `)).then(i => {
+        ytdl.execPromise(`${link} --no-check-formats --extractor-args youtube:skip=dash,hls --dump-single-json --flat-playlist --skip-download`.split(` `)).then(i => {
             processInfo(JSON.parse(i))
         }).catch(e => {
             console.error(e);
