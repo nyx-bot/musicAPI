@@ -3,6 +3,8 @@ const fs = require('fs')
 module.exports = (link, keys) => new Promise(async (res, rej) => {
     const ytdl = keys.clients.ytdl;
 
+    let retried = false;
+
     console.log(`getting metadata for ${link}`, link);
 
     if(global.streamCache[link]) {
@@ -79,13 +81,14 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
 
             const thisId = require(`../util`).idGen(8)
 
-            fs.writeFileSync(`./etc/${thisId}.json`, JSON.stringify(input, null, 4));
-
             if(input.entries && typeof input.entries == `object`) {
                 console.log(`THIS IS A PLAYLIST! Parsing as such (entries length: ${input.entries.length})`);
+                
+                if(input.entries.find(o => o.entries)) input.entries = input.entries.find(o => o.entries && o.entries.length > 0).entries
 
-                if(!input.entries[0].duration) {
-                    console.log(`Duration is missing on entries!`)
+                if(!input.entries[0].duration && !retried) {
+                    console.log(`Duration is missing on entries! (${input.entries.filter(o => o.duration).length} entries has duration)`, input.entries[0]);
+                    retried = true;
                     return ytdl.execPromise(`${link} --dump-single-json --skip-download`.split(` `)).then(i => {
                         processInfo(JSON.parse(i))
                     }).catch(e => {
@@ -93,6 +96,8 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                         res(null)
                     });
                 } else {
+                    if(retried) console.log(`ALREADY RETRIED ONCE`);
+
                     let obj = input;
     
                     obj.thumbnail = obj.thumbnails && obj.thumbnails.length > 0 ? obj.thumbnails.slice(-1)[0] : {
