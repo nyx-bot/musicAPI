@@ -283,18 +283,15 @@ module.exports = ({app, auth}) => {
     server = app.listen(1400, function () {
         console.log(`online! port ${server.address().port}; listening to auth key ${auth}`);
     
-        const uptimePingURL = `http://172.105.96.27:1200/heartbeat`
-    
         let cron = require('cron');
         let job = new cron.CronJob(`* * * * *`, () => {
+            console.log(`ping time!\n- sending ping? ${global.sendPings}\n- node server pool size? ${pool.length}`)
             if(global.sendPings && pool.length >= 1) {
-                require(`superagent`).post(uptimePingURL).send({
-                    service: `Music Services`,
-                    token: `oVEathIleVeRaTerEsYKNoCkAP`
-                }).then(() => {
-                    console.log(`successfully sent uptime ping to url ${uptimePingURL}`)
+                const link = require('./config.json').uptimeHeartbeat
+                require(`superagent`).get(link).then(r => {
+                    console.log(`successfully sent uptime ping to ${link.split(`//`)[1].split(`/`)[0]} (status: ${r.status})`)
                 }).catch(e => {
-                    console.log(`failed to send uptime ping to url ${uptimePingURL} // ${e}`)
+                    console.error(`failed to send uptime ping to ${link.split(`//`)[1].split(`/`)[0]} (status: ${e.status})`)
                 });
             } else if(!global.sendPings) {
                 console.log(`sendPings are disabled -- not sending to uptimeRobot`)

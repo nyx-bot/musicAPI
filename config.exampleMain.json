@@ -6,5 +6,6 @@
             "cllientSecret": "spotify client secret"
         },
         "genius": "genuis api token"
-    }
+    },
+    "uptimeHeartbeat": "URL to a service that takes GET requests for heartbeats"
 }
