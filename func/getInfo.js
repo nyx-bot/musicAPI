@@ -171,7 +171,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
 
                         let serviceName = link.split(`//`)[1].split(`.`).slice(-3,-2)[0].split(`/`)[0]
 
-                        json.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)} Attachment`;
+                        json.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)}`;
                         json.uploader_url = link;
 
                         if(info.format && info.format.duration) json.duration = Math.round(info.format.duration)
