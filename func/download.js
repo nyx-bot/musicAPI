@@ -91,7 +91,8 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                     `-P`, fileLocation.split(`/`).slice(0, -1).join(`/`),
                     `-o`, `%(id)s.%(ext)s`,
                     `--no-part`,
-                    `--cache-dir`, `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/yt-dlp-cache`
+                    `--cache-dir`, `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/yt-dlp-cache`,
+                    `--extractor-args youtube:skip=dash,hls`
                 ], format_id = null;
 
                 if(fs.existsSync(`./etc/${jsonFileID}.json`)) {
