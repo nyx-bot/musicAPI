@@ -1,5 +1,13 @@
 const util = {};
 
+const ffprobePath = require('child_process').execSync(`which ffprobe`).toString().trim()
+
+console.log(`Using ffprobe path: "${ffprobePath}"`)
+
+util.ffprobe = (path) => require('ffprobe-client')(path, {
+     path: ffprobePath
+})
+
 util.timestampStringToNum = function (ts) {
     if(!ts.includes(`:`)) return 0;
     const tsArr = ts.split(':').reverse();

@@ -1,4 +1,6 @@
-const fs = require('fs')
+const fs = require('fs');
+
+const { ffprobe } = require('../util')
 
 module.exports = (link, keys) => new Promise(async (res, rej) => {
     const ytdl = keys.clients.ytdl;
@@ -76,7 +78,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
             }).catch(rej)
         };
 
-        const processInfo = (input) => {
+        const processInfo = async (input) => {
             console.log(`got metadata for ${link} -- ${input.title}`);
 
             const thisId = require(`../util`).idGen(8)
@@ -150,9 +152,9 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                     width: 1024,
                     height: 1024,
                 };
-        
-                json.thumbnail = thumbnail;
 
+                json.thumbnail = thumbnail;
+    
                 json.nyxData = {
                     downloadedLengthInMs: 0,
                     lastUpdate: Date.now(),
@@ -160,15 +162,32 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                 };
 
                 json.url = link;
-        
+
+                if(json.direct) {
+                    console.log(`This is a direct download link, calling ffprobe for ${json.url}...`);
+
+                    try {
+                        const info = await ffprobe(json.url);
+
+                        let serviceName = link.split(`//`)[1].split(`.`).slice(-3,-2)[0].split(`/`)[0]
+
+                        json.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)} Attachment`;
+                        json.uploader_url = link;
+
+                        if(info.format && info.format.duration) json.duration = Math.round(info.format.duration)
+                    } catch(e) {
+                        console.warn(`Failed to get ffprobe info: ${e}`, e)
+                    }
+                };
+
                 global.streamCache[link] = json;
                 global.streamCache[origLink] = json;
-        
+                  
                 setTimeout(() => {
                     delete global.streamCache[link];
                     delete global.streamCache[origLink];
                 }, 4.32e+7);
-        
+
                 res(json);
             }
         }

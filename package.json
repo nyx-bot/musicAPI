@@ -6,6 +6,7 @@
     "cloneable-readable": "^2.1.0",
     "cron": "^1.8.2",
     "express": "^4.17.1",
+    "ffprobe-client": "^1.1.6",
     "fluent-ffmpeg": "^2.1.2",
     "fs-extra": "^10.1.0",
     "genius-api": "^0.4.1",
