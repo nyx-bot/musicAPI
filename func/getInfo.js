@@ -102,12 +102,6 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
 
                     let obj = input;
     
-                    obj.thumbnail = obj.thumbnails && obj.thumbnails.length > 0 ? obj.thumbnails.slice(-1)[0] : {
-                        url: `https://i.nyx.bot/null.png`,
-                        width: 1024,
-                        height: 1024,
-                    };
-    
                     input.entries = input.entries.map(json => { 
                         console.log(json.url, json.webpage_url)
                         
@@ -127,6 +121,16 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
     
                         return json;
                     });
+
+                    if(obj.thumbnails && obj.thumbnails.length > 0) {
+                        obj.thumbnail = obj.thumbnails.slice(-1)[0]
+                    } else if(input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`)) {
+                        obj.thumbnail = input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`).thumbnail
+                    } else obj.thumbnail = {
+                        url: `https://i.nyx.bot/null.png`,
+                        width: 1024,
+                        height: 1024,
+                    };
     
                     global.streamCache[link] = obj;
                     global.streamCache[origLink] = obj;
