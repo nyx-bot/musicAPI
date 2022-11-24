@@ -38,11 +38,14 @@ module.exports = ({app, auth}) => {
             console.log(`online! port ${server.address().port}; listening to auth key ${auth}`);
 
             const sendToMainProcess = () => {
-                require(`superagent`).get(`${ctx.keys.mainLocation}/registerMusicClient`).set(`auth`, auth).then(r => {
-                    //console.log(`successfully registered musicAPI to nyx!`) // it's 5 seconds, don't spam the console lol
-                }).catch(e => {
-                    console.error(`failed to register musicAPI to nyx! (possibly offline?) // ${e}`)
-                })
+                if(global.sendHeartbeat !== false) {
+                    //console.log(`Pinging enabled!`)
+                    require(`superagent`).get(`${ctx.keys.mainLocation}/registerMusicClient`).set(`auth`, auth).then(r => {
+                        //console.log(`successfully registered musicAPI to nyx!`) // it's 5 seconds, don't spam the console lol
+                    }).catch(e => {
+                        console.error(`failed to register musicAPI to nyx! (possibly offline?) // ${e}`)
+                    })
+                } else console.log(`Ping sending is not enabled!`)
             };
 
             setInterval(sendToMainProcess, 5000); sendToMainProcess();

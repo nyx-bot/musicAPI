@@ -77,9 +77,11 @@ module.exports = ({app, auth}) => {
     app.get(`/unregisterMusicClient`, async (req, res) => {
         const ip = (req.headers[`CF-Connecting-IP`] || req.headers[`cf-connecting-ip`] || req.headers['x-forwarded-for'] || req.ip).replace(`::ffff:`, ``);
 
-        let existingIndex = pool.findIndex(o => o.location == ip);
+        let sent = false;
 
-        if(existingIndex != -1) {
+        while(pool.findIndex(o => o.location == ip) != -1) {
+            let existingIndex = pool.findIndex(o => o.location == ip)
+
             clearTimeout(pool[existingIndex].timeout);
             
             pool.splice(existingIndex, 1);
@@ -88,11 +90,17 @@ module.exports = ({app, auth}) => {
 
             blacklistedIps.push(ip);
             
-            res.send({
-                error: false,
-                message: `Successfully removed IP!`
-            })
-        } else res.send({
+            if(!sent) {
+                sent = true;
+
+                res.send({
+                    error: false,
+                    message: `Successfully removed IP!`
+                })
+            }
+        }
+
+        if(!sent) res.send({
             error: false,
             message: `IP wasn't registered!`
         })
