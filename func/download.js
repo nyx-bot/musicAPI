@@ -184,7 +184,7 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
 
         if(fs.existsSync(fileLocation)) {
             console.log(`${fileLocation} equivalent of ${input} saved!`)
-            res({domain, id, json, location: originalFileLocation})
+            res({domain, id, json, location: originalFileLocation, alreadyExists: true,})
         } else process({});
     } else {
         rej(`No input`)
