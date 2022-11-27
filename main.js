@@ -278,14 +278,7 @@ module.exports = ({app, auth}) => {
                     //console.error(`${e.message ? e.message : e.toString()}`)
                     run(req, res).then(process).catch(e => {
                         //console.error(`${e.message ? e.message : e.toString()}`)
-                        try {
-                            (res.headersSent ? res : res.status(500)).send({
-                                error: true,
-                                message: `Unable to request! (${e.message ? e.message : e.toString()})`
-                            })
-                        } catch(e) {
-                            res.end()
-                        }
+                        res.end()
                     })
                 })
             })
