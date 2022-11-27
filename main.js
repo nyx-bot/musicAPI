@@ -116,6 +116,8 @@ module.exports = ({app, auth}) => {
     })
 
     const run = (req, res, specifiedUrl) => new Promise(async (resp, rej) => {
+        const started = Date.now();
+
         var url = specifiedUrl || getUrl();
         if(!url) return rej({
             error: true,
@@ -126,7 +128,7 @@ module.exports = ({app, auth}) => {
 
         let params = {
             method: req.method.toString().toUpperCase(),
-            uri: requestTo,
+            uri: requestTo.replace(`::1`, `127.0.0.1`),
             headers: {},
             forever: true,
             encoding: null,
@@ -166,14 +168,14 @@ module.exports = ({app, auth}) => {
 
         req.on('close', () => {
             console.log(`outside request closed connection!`);
-            console.log(`(${totalChunkLength / 1e+6}mb sent)`);
+            console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`);
         })
 
         request.on(`response`, (response) => {
             res.set(response.headers)
-            console.log(response.headers)
+            //console.log(response.headers)
 
-            console.log(`response from ${requestTo} recieved! (status code: ${response.statusCode})`, response.headers);
+            console.log(`response from ${requestTo} recieved! (status code: ${response.statusCode}) -- took ${(Date.now()-started)/1000} seconds`);
     
             const map = getMap(req)
 
@@ -194,7 +196,7 @@ module.exports = ({app, auth}) => {
 
         request.on(`error`, (err) => {
             console.error(`error occured in stack for ${requestTo}: ${err}`, err && err.stack ? err.stack : err);
-            console.log(`(${totalChunkLength / 1e+6}mb sent)`)
+            console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`)
             rej({
                 error: true,
                 message: `${err}`,
@@ -203,7 +205,7 @@ module.exports = ({app, auth}) => {
         });
 
         request.on(`close`, () => {
-            console.log(`close event triggered! (${totalChunkLength / 1e+6}mb sent)`)
+            console.log(`close event triggered! (${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`)
         })
     });
 
@@ -276,10 +278,14 @@ module.exports = ({app, auth}) => {
                     //console.error(`${e.message ? e.message : e.toString()}`)
                     run(req, res).then(process).catch(e => {
                         //console.error(`${e.message ? e.message : e.toString()}`)
-                        (res.headersSent ? res : res.status(500)).send({
-                            error: true,
-                            message: `Unable to request! (${e.message ? e.message : e.toString()})`
-                        })
+                        try {
+                            (res.headersSent ? res : res.status(500)).send({
+                                error: true,
+                                message: `Unable to request! (${e.message ? e.message : e.toString()})`
+                            })
+                        } catch(e) {
+                            res.end()
+                        }
                     })
                 })
             })
