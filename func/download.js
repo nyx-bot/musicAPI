@@ -54,7 +54,7 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
         const process = () => {
             try {
                 let audioBitrates = json.formats.filter(o => {
-                    return !isNaN(o.abr) && o.abr > 1 && (o.asr || 0) <= 44300
+                    return !isNaN(o.abr) && o.abr > 1 && (o.asr || 0) <= 49000
                 }).sort((a,b) => {
                     const abitrate = a.abr * (a.asr || 1), bbitrate = b.abr * (b.asr || 1);
                     console.log(abitrate, bbitrate)
