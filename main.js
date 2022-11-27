@@ -166,24 +166,14 @@ module.exports = ({app, auth}) => {
             totalChunkLength += chunk.length
         });
 
-        req.on('close', () => {
+        req.once('close', () => {
             console.log(`outside request closed connection!`);
-            console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`);
-        })
-
-        request.on(`response`, (response) => {
-            res.set(response.headers)
-            //console.log(response.headers)
-
-            console.log(`response from ${requestTo} recieved! (status code: ${response.statusCode}) -- took ${(Date.now()-started)/1000} seconds`);
-    
-            const map = getMap(req)
-
-            locationMaps[map] = {
-                location: url.split(`//`)[1].split(`:`)[0],
-                redirect: `${url.replace(`?startTime=${req.query.startTime}`, ``).replace(`&startTime=${req.query.startTime}`, ``)}`,
-            }; console.log(locationMaps[map]);
-
+            try {
+                if(request && request.req && request.req) request.req.destroy()
+                console.log(`Attempted to destroy request!`)
+            } catch(e) {
+                console.warn(`Failed to destroy proxy request! ${e}`)
+            }
             /*res({
                 request: request,
                 response: response,
@@ -194,17 +184,17 @@ module.exports = ({app, auth}) => {
             });*/
         });
 
-        request.on(`error`, (err) => {
+        request.once(`error`, (err) => {
             console.error(`error occured in stack for ${requestTo}: ${err}`, err && err.stack ? err.stack : err);
-            console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`)
-            rej({
+            console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`);
+            if(`${err}`.includes(`aborted`)) {} else rej({
                 error: true,
                 message: `${err}`,
                 url,
             });
         });
 
-        request.on(`close`, () => {
+        request.once(`close`, () => {
             console.log(`close event triggered! (${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`)
         })
     });
@@ -248,7 +238,7 @@ module.exports = ({app, auth}) => {
                 var headers = r.response.headers;
                 headers[`Connection`] = `Keep-Alive`
 
-                res.set(headers);
+                if(!res.headersSent) res.set(headers);
 
                 r.passthru.pipe(res)
 
