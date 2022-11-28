@@ -92,7 +92,7 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                     `-o`, `%(id)s.%(ext)s`,
                     `--no-part`,
                     `--cache-dir`, `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/yt-dlp-cache`,
-                    `--extractor-args`, `youtube:skip=dash,hls`
+                    //`--extractor-args`, `youtube:skip=dash,hls`
                 ], format_id = null;
 
                 if(fs.existsSync(`./etc/${jsonFileID}.json`)) {
@@ -103,13 +103,13 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
     
                 const bestAudioWithoutVideo = audioBitrates.filter(o => typeof o.vbr != `number`)[0];
 
-                console.log(`best audio bitrate (without video): ${bestAudioWithoutVideo.abr} with sampling rate of ${bestAudioWithoutVideo.asr}`);
+                if(bestAudioWithoutVideo) console.log(`best audio bitrate (without video): ${bestAudioWithoutVideo.abr} with sampling rate of ${bestAudioWithoutVideo.asr}`);
                 
-                if(bestAudio.abr && bestAudio.abr == bestAudioWithoutVideo.abr && bestAudio.asr == bestAudioWithoutVideo.asr) {
+                if(bestAudio && bestAudioWithoutVideo && bestAudio.abr && bestAudio.abr == bestAudioWithoutVideo.abr && bestAudio.asr == bestAudioWithoutVideo.asr) {
                     console.log(`bestAudio is equivalent to bestAudioWithoutVideo, using without video!`);
                     format_id = bestAudioWithoutVideo.format_id
                 } else {
-                    console.log(`bestAudio is NOT equivalent to bestAudioWithoutVideo (${bestAudio.abr} / ${bestAudio.asr} > ${bestAudioWithoutVideo.abr} / ${bestAudioWithoutVideo.asr})`);
+                    if(bestAudio && bestAudioWithoutVideo) console.log(`bestAudio is NOT equivalent to bestAudioWithoutVideo (${bestAudio.abr} / ${bestAudio.asr} > ${bestAudioWithoutVideo.abr} / ${bestAudioWithoutVideo.asr})`);
                     
                     let difference = bestAudio.abr ? bestAudio.abr * (bestAudio.asr || 1) - bestAudioWithoutVideo.abr * (bestAudioWithoutVideo.asr || 1) : -11000;
 
@@ -127,9 +127,26 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
 
                 console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"`)
 
-                let playback = ytdl.exec(args);
+                const abort = new AbortController();
+
+                let ytdlCompleted = false;
+
+                let playback = ytdl.exec(args, {}, abort.signal);
+
+                const abortNow = () => {
+                    if(!ytdlCompleted) {
+                        console.log(`Abort signal received!`);
+                        abort.abort();
     
-                playback.on('progress', (progress) => {
+                        const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
+                        if(file) {
+                            console.log(`File exists at "./etc/${domain}/${file}"`)
+                            fs.rmSync(`./etc/${domain}/${file}`)
+                        }
+                    }
+                }
+
+                const initialRun = (progress) => {
                     const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
 
                     if(waitUntilComplete) {
@@ -137,19 +154,28 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                     } else if(!sentBack && file && Math.round(progress.percent || 0) != 0) {
                         sentBack = true;
                         console.log(`returning file`)
-                        res({domain, id, json, location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`})
+                        res({domain, id, json, location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`, abort: abortNow})
                     }
             
                     if(global.streamCache[input].nyxData && progress.timemark) {
                         global.streamCache[input].nyxData.downloadedLengthInMs = util.time(progress.timemark.split(`.`)[0]).units.ms
                         global.streamCache[input].nyxData.lastUpdate = Date.now();
                     };
-            
+                };
+
+                setTimeout(initialRun, 2000, {
+                    percent: 1
+                })
+    
+                playback.on('progress', (progress) => {
+                    initialRun(progress)
                     //console.log('processed ' + Math.round(progress.percent) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentKbps || `0`}kbps [${progress.timemark}]`);
                     console.log(`processed ` + Math.round(progress.percent || 0) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentSpeed} speed -- ETA: ${progress.eta}`)
                 });
         
                 playback.once(`close`, () => {
+                    ytdlCompleted = true;
+
                     const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
 
                     if(fs.existsSync(`./etc/${jsonFileID}.json`)) fs.rmSync(`./etc/${jsonFileID}.json`)

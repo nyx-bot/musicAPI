@@ -78,7 +78,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
             }).catch(rej)
         };
 
-        const processInfo = async (input) => {
+        const processInfo = async (input, livestream) => {
             console.log(`got metadata for ${link} -- ${input.title}`);
 
             const thisId = require(`../util`).idGen(8)
@@ -114,6 +114,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                         json.thumbnail = thumbnail;
         
                         json.nyxData = {
+                            livestream: livestream ? true : false,
                             downloadedLengthInMs: 0,
                             lastUpdate: Date.now(),
                             thisId,
@@ -160,6 +161,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                 json.thumbnail = thumbnail;
     
                 json.nyxData = {
+                    livestream: livestream ? true : false,
                     downloadedLengthInMs: 0,
                     lastUpdate: Date.now(),
                     thisId,
@@ -199,8 +201,18 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
         ytdl.execPromise(`${link} --no-check-formats --extractor-args youtube:skip=dash,hls --dump-single-json --flat-playlist --skip-download`.split(` `)).then(i => {
             processInfo(JSON.parse(i))
         }).catch(e => {
-            console.error(e);
-            res(null)
+            if(`${e}`.toLowerCase().includes(`no video formats found`)) {
+                console.warn(`No video formats were found, trying again but without args!`)
+                ytdl.execPromise(`${link} --dump-single-json`.split(` `)).then(i => {
+                    processInfo(JSON.parse(i), true)
+                }).catch(e2 => {
+                    console.error(e2);
+                    res(null)
+                })
+            } else {
+                console.error(e);
+                res(null)
+            }
         });
     }
 })
