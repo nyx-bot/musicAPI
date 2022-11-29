@@ -152,6 +152,8 @@ module.exports = ({app, auth}) => {
 
         try {
             const request = require('request')(params);
+
+            let connectionClosed = false;
     
             //let passthru = new PassThrough();
             //request.pipe(passthru);
@@ -168,6 +170,7 @@ module.exports = ({app, auth}) => {
             });
 
             req.once(`abort`, () => {
+                connectionClosed = true;
                 try {
                     if(request && request.req && request.req) request.req.destroy()
                     if(request && request.destroy) request.destroy()
@@ -178,6 +181,7 @@ module.exports = ({app, auth}) => {
             })
     
             req.once('close', () => {
+                connectionClosed = true;
                 console.log(`outside request closed connection!`);
                 try {
                     if(request && request.req && request.req) request.req.destroy()
@@ -209,8 +213,8 @@ module.exports = ({app, auth}) => {
                     console.warn(`Failed to destroy proxy request! ${e}`)
                 }
     
-                if(`${err}`.toLowerCase().includes(`aborted`) || `${err}`.toLowerCase().includes(`socket hang up`)) {
-                    console.warn(`Connection was aborted`);
+                if(!connectionClosed && (`${err}`.toLowerCase().includes(`socket hang up`) || `${err}`.toLowerCase().includes(`aborted`))) {
+                    console.warn(`Connection was aborted (${err}) -- connection looks to be still active!`);
 
                     const ip = url.split(`//`)[1].split(`:`)[0];
                     
@@ -223,7 +227,34 @@ module.exports = ({app, auth}) => {
                         pool.splice(index, 1);
                     }
 
-                    run(req, res, specifiedUrl)
+                    run(req, res, specifiedUrl).catch(e => {
+                        setTimeout(() => {
+                            console.log(`re-running! (error: ${e})`)
+                            run(req, res, specifiedUrl).catch(e => {
+                                setTimeout(() => {
+                                    console.log(`re-running! (error: ${e})`)
+                                    run(req, res, specifiedUrl).catch(e => {
+                                        setTimeout(() => {
+                                            console.log(`re-running! (error: ${e})`)
+                                            run(req, res, specifiedUrl).catch(e => {
+                                                setTimeout(() => {
+                                                    console.log(`re-running! (error: ${e})`)
+                                                    run(req, res, specifiedUrl).catch(e => {
+                                                        setTimeout(() => {
+                                                            console.log(`re-running! (error: ${e})`)
+                                                            run(req, res, specifiedUrl).catch(e2 => {
+                                                                console.error(e2)
+                                                            })
+                                                        }, 800)
+                                                    })
+                                                }, 800)
+                                            })
+                                        }, 800)
+                                    })
+                                }, 800)
+                            })
+                        }, 800)
+                    })
                 } else {
                     console.error(`error occured in stack for ${requestTo}: ${err}`, err && err.stack ? err.stack : err);
                     console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`);
@@ -272,59 +303,63 @@ module.exports = ({app, auth}) => {
     }
 
     const handler = async (req, res) => {
-        let map = getMap(req);
-
-        const process = (r) => {
-            if(typeof r == `string`) {
-                console.log(`adding ${r} to locationMaps for ${map}`);
-                locationMaps[map] = {
-                    location: r.url.split(`//`)[1].split(`:`)[0],
-                    redirect: `${r.url.replace(`?startTime=${req.query.startTime}`, ``).replace(`&startTime=${req.query.startTime}`, ``)}`,
-                }; console.log(locationMaps[map])
-                //res.redirect(r)
+        try {
+            let map = getMap(req);
+    
+            const process = (r) => {
+                if(typeof r == `string`) {
+                    console.log(`adding ${r} to locationMaps for ${map}`);
+                    locationMaps[map] = {
+                        location: r.url.split(`//`)[1].split(`:`)[0],
+                        redirect: `${r.url.replace(`?startTime=${req.query.startTime}`, ``).replace(`&startTime=${req.query.startTime}`, ``)}`,
+                    }; console.log(locationMaps[map])
+                    //res.redirect(r)
+                } else {
+                    locationMaps[map] = {
+                        location: r.url.split(`//`)[1].split(`:`)[0],
+                        redirect: `${r.url.replace(`?startTime=${req.query.startTime}`, ``).replace(`&startTime=${req.query.startTime}`, ``)}`,
+                    }; console.log(locationMaps[map]);
+    
+                    var headers = r.response.headers;
+                    headers[`Connection`] = `Keep-Alive`
+    
+                    if(!res.headersSent) res.set(headers);
+    
+                    r.passthru.pipe(res)
+    
+                    //r.request.pipe(res)
+                }
+            }
+    
+            if(locationMaps[map] && pool.find(o => o.location == locationMaps[map].location)) {
+                const redirection = `http://${locationMaps[map].location}:1366${req.originalUrl}`
+                //const redirection = `${locationMaps[map].redirect}${req.query.startTime ? (locationMaps[map].redirect.includes(`?`) ? `&startTime=${req.query.startTime}` : `?startTime=${req.query.startTime}`) : ``}`;
+                console.log(`redirect already exists!`, locationMaps[map], redirection);
+                //res.redirect(redirection)
+                run(req, res, `http://${locationMaps[map].location}:1366`).then(process).catch(e => {
+                    console.error(`Could not use existing location! (${e.message ? e.message : e.toString()})`)
+                    delete locationMaps[map]; 
+                    handler(req, res);
+                })
             } else {
-                locationMaps[map] = {
-                    location: r.url.split(`//`)[1].split(`:`)[0],
-                    redirect: `${r.url.replace(`?startTime=${req.query.startTime}`, ``).replace(`&startTime=${req.query.startTime}`, ``)}`,
-                }; console.log(locationMaps[map]);
-
-                var headers = r.response.headers;
-                headers[`Connection`] = `Keep-Alive`
-
-                if(!res.headersSent) res.set(headers);
-
-                r.passthru.pipe(res)
-
-                //r.request.pipe(res)
-            }
-        }
-
-        if(locationMaps[map] && pool.find(o => o.location == locationMaps[map].location)) {
-            const redirection = `http://${locationMaps[map].location}:1366${req.originalUrl}`
-            //const redirection = `${locationMaps[map].redirect}${req.query.startTime ? (locationMaps[map].redirect.includes(`?`) ? `&startTime=${req.query.startTime}` : `?startTime=${req.query.startTime}`) : ``}`;
-            console.log(`redirect already exists!`, locationMaps[map], redirection);
-            //res.redirect(redirection)
-            run(req, res, `http://${locationMaps[map].location}:1366`).then(process).catch(e => {
-                console.error(`Could not use existing location! (${e.message ? e.message : e.toString()})`)
-                delete locationMaps[map]; 
-                handler(req, res);
-            })
-        } else {
-            if(locationMaps[map]) {
-                console.log(`redirect exists, but is not in the musicapi pool! removing...`)
-                delete locationMaps[map];
-            }
-
-            run(req, res).then(process).catch(e => {
-                //console.error(`${e.message ? e.message : e.toString()}`)
+                if(locationMaps[map]) {
+                    console.log(`redirect exists, but is not in the musicapi pool! removing...`)
+                    delete locationMaps[map];
+                }
+    
                 run(req, res).then(process).catch(e => {
                     //console.error(`${e.message ? e.message : e.toString()}`)
                     run(req, res).then(process).catch(e => {
                         //console.error(`${e.message ? e.message : e.toString()}`)
-                        res.end()
+                        run(req, res).then(process).catch(e => {
+                            //console.error(`${e.message ? e.message : e.toString()}`)
+                            res.end()
+                        })
                     })
                 })
-            })
+            }
+        } catch(e) {
+            console.error(e)
         }
     }
 

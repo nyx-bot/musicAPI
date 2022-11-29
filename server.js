@@ -3,6 +3,8 @@ const cp = require('child_process')
 const app = require("express")();
 app.use(require("body-parser").json());
 
+process.on(`unhandledRejection`, console.error);
+process.on(`uncaughtException`, console.error)
 
 global.streamCache = {};
 
