@@ -166,11 +166,22 @@ module.exports = ({app, auth}) => {
             request.on(`data`, chunk => {
                 totalChunkLength += chunk.length
             });
+
+            req.once(`abort`, () => {
+                try {
+                    if(request && request.req && request.req) request.req.destroy()
+                    if(request && request.destroy) request.destroy()
+                    console.log(`Attempted to destroy request!`)
+                } catch(e) {
+                    console.warn(`Failed to destroy proxy request! ${e}`)
+                }
+            })
     
             req.once('close', () => {
                 console.log(`outside request closed connection!`);
                 try {
                     if(request && request.req && request.req) request.req.destroy()
+                    if(request && request.destroy) request.destroy()
                     console.log(`Attempted to destroy request!`)
                 } catch(e) {
                     console.warn(`Failed to destroy proxy request! ${e}`)
@@ -189,6 +200,14 @@ module.exports = ({app, auth}) => {
     
             request.on(`error`, (err) => {
                 errored = true;
+
+                try {
+                    if(request && request.req && request.req) request.req.destroy()
+                    if(request && request.destroy) request.destroy()
+                    console.log(`Attempted to destroy request!`)
+                } catch(e) {
+                    console.warn(`Failed to destroy proxy request! ${e}`)
+                }
     
                 if(`${err}`.toLowerCase().includes(`aborted`)) {
                     console.warn(`Connection was aborted`);
@@ -217,6 +236,14 @@ module.exports = ({app, auth}) => {
             });
     
             request.once(`close`, () => {
+                try {
+                    if(request && request.req && request.req) request.req.destroy()
+                    if(request && request.destroy) request.destroy()
+                    console.log(`Attempted to destroy request!`)
+                } catch(e) {
+                    console.warn(`Failed to destroy proxy request! ${e}`)
+                }
+                
                 console.log(`close event triggered! (${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`)
             })
         } catch(e) {
