@@ -161,11 +161,13 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                 json.thumbnail = thumbnail;
     
                 json.nyxData = {
-                    livestream: livestream ? true : false,
+                    livestream: json.duration ? false : true,
                     downloadedLengthInMs: 0,
                     lastUpdate: Date.now(),
                     thisId,
                 };
+
+                console.log(`Adding nyxData object: `, json.nyxData)
 
                 json.url = link;
 

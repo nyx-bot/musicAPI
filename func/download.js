@@ -53,11 +53,12 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
 
         const process = () => {
             try {
+                console.log(`This ${json.nyxData.livestream ? `is` : `is NOT`} a livestream!`)
                 let audioBitrates = json.formats.filter(o => {
                     return !isNaN(o.abr) && o.abr > 1 && (o.asr || 0) <= 49000
                 }).sort((a,b) => {
                     const abitrate = a.abr * (a.asr || 1), bbitrate = b.abr * (b.asr || 1);
-                    console.log(abitrate, bbitrate)
+                    console.log(`A-ABR: ${a.abr} / ${a.asr || 1} / ${abitrate} | B-ABR: ${b.abr} / ${b.asr || 1} / ${bbitrate}`)
                     if(abitrate > bbitrate) {
                         return -1
                     } else if(abitrate < bbitrate) {
@@ -72,7 +73,7 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
 
                         audioBitrates = json.formats.sort((a,b) => {
                             const abitrate = a.tbr, bbitrate = b.tbr;
-                            console.log(abitrate, bbitrate)
+                            console.log(`A-TBR: ${abitrate} | B-TBR: ${bbitrate}`)
                             if(abitrate > bbitrate) {
                                 return -1
                             } else if(abitrate < bbitrate) {
@@ -123,6 +124,8 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                     }
                 };
 
+                console.log(`Using format ${format_id}, corresponding to format obj:`, json.formats.find(o => o.format_id == format_id))
+
                 args.push(`--format`, `${format_id}`);
 
                 console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"`)
@@ -131,8 +134,10 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
 
                 let ytdlCompleted = false;
 
-                let playback = ytdl.exec(args, {}, abort.signal);
+                if(json.nyxData.livestream) args.splice(args.indexOf(`-o`), 2);
 
+                let playback = ytdl[args.indexOf(`-o`) == -1 ? `execStream` : `exec`](args, {}, abort.signal);
+    
                 const abortNow = () => {
                     if(!ytdlCompleted) {
                         console.log(`Abort signal received!`);
@@ -145,7 +150,6 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                         }
                     }
                 }
-
                 const initialRun = (progress) => {
                     const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
 
@@ -155,6 +159,10 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                         sentBack = true;
                         console.log(`returning file`)
                         res({domain, id, json, location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`, abort: abortNow})
+                    } else if(!sentBack && json.nyxData.livestream && Math.round(progress.percent || 0) != 0) {
+                        sentBack = true;
+                        console.log(`returning stream`)
+                        res({domain, id, json, location: null, stream: playback, abort: abortNow})
                     }
             
                     if(global.streamCache[input].nyxData && progress.timemark) {
@@ -162,15 +170,11 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                         global.streamCache[input].nyxData.lastUpdate = Date.now();
                     };
                 };
-
-                setTimeout(initialRun, 2000, {
-                    percent: 1
-                })
     
-                playback.on('progress', (progress) => {
-                    initialRun(progress)
+                playback.on(json.nyxData.livestream ? `data` : `progress`, (progress) => {
+                    initialRun(progress && typeof progress.percent == `number` ? progress : {percent: 1})
                     //console.log('processed ' + Math.round(progress.percent) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentKbps || `0`}kbps [${progress.timemark}]`);
-                    console.log(`processed ` + Math.round(progress.percent || 0) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentSpeed} speed -- ETA: ${progress.eta}`)
+                    if(progress.percent) console.log(`processed ` + Math.round(progress.percent || 0) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentSpeed} speed -- ETA: ${progress.eta}`)
                 });
         
                 playback.once(`close`, () => {
