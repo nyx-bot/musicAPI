@@ -200,6 +200,7 @@ module.exports = ({app, auth}) => {
                     const index = pool.findIndex(o => o.location == ip);
                     if(index != -1) {
                         console.log(`location ${ip} found! (index ${index})`)
+                        clearTimeout(pool[index].timeout);
                         pool.splice(index, 1);
                     }
 
