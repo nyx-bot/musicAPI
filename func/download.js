@@ -128,13 +128,19 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
 
                 args.push(`--format`, `${format_id}`);
 
-                console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"`)
-
                 const abort = new AbortController();
 
                 let ytdlCompleted = false;
 
-                if(json.nyxData.livestream) args.splice(args.indexOf(`-o`), 2);
+                if(json.nyxData.livestream) {
+                    //if(args.indexOf(`--format`) !== -1) args.splice(args.indexOf(`--format`), 2)
+                    if(args.indexOf(`-o`) !== -1) args.splice(args.indexOf(`-o`), 2);
+                    if(args.indexOf(`-P`) !== -1) args.splice(args.indexOf(`-P`), 2);
+                    //if(args.indexOf(`--no-part`) !== -1) args.splice(args.indexOf(`--no-part`), 1);
+                    args.push(`--fixup`, `never`)
+                }
+
+                console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"`)
 
                 let playback = ytdl[args.indexOf(`-o`) == -1 ? `execStream` : `exec`](args, {}, abort.signal);
     
