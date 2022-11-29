@@ -200,7 +200,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
             }
         }
 
-        ytdl.execPromise(`${link} --no-check-formats --extractor-args youtube:skip=dash,hls --dump-single-json --flat-playlist --skip-download`.split(` `)).then(i => {
+        ytdl.execPromise(`${link} --dump-single-json --flat-playlist`.split(` `)).then(i => {
             processInfo(JSON.parse(i))
         }).catch(e => {
             if(`${e}`.toLowerCase().includes(`no video formats found`)) {
