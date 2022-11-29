@@ -150,53 +150,78 @@ module.exports = ({app, auth}) => {
 
         console.log(`${req.method.toString().toUpperCase()}/${requestTo}`)
 
-        const request = require('request')(params);
-
-        //let passthru = new PassThrough();
-        //request.pipe(passthru);
-
-        //var headers = r.response.headers;
-        //headers[`Connection`] = `Keep-Alive`
-
-        request.pipe(res)
-
-        let totalChunkLength = 0;
-
-        request.on(`data`, chunk => {
-            totalChunkLength += chunk.length
-        });
-
-        req.once('close', () => {
-            console.log(`outside request closed connection!`);
-            try {
-                if(request && request.req && request.req) request.req.destroy()
-                console.log(`Attempted to destroy request!`)
-            } catch(e) {
-                console.warn(`Failed to destroy proxy request! ${e}`)
-            }
-            /*res({
-                request: request,
-                response: response,
-                firstChunk,
-                totalChunkLength: () => { return totalChunkLength; },
-                passthru,
-                url,
-            });*/
-        });
-
-        request.once(`error`, (err) => {
-            console.error(`error occured in stack for ${requestTo}: ${err}`, err && err.stack ? err.stack : err);
-            console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`);
-            if(`${err}`.includes(`aborted`)) {} else rej({
-                error: true,
-                message: `${err}`,
-                url,
+        try {
+            const request = require('request')(params);
+    
+            //let passthru = new PassThrough();
+            //request.pipe(passthru);
+    
+            //var headers = r.response.headers;
+            //headers[`Connection`] = `Keep-Alive`
+    
+            request.pipe(res)
+    
+            let totalChunkLength = 0;
+    
+            request.on(`data`, chunk => {
+                totalChunkLength += chunk.length
             });
-        });
+    
+            req.once('close', () => {
+                console.log(`outside request closed connection!`);
+                try {
+                    if(request && request.req && request.req) request.req.destroy()
+                    console.log(`Attempted to destroy request!`)
+                } catch(e) {
+                    console.warn(`Failed to destroy proxy request! ${e}`)
+                }
+                /*res({
+                    request: request,
+                    response: response,
+                    firstChunk,
+                    totalChunkLength: () => { return totalChunkLength; },
+                    passthru,
+                    url,
+                });*/
+            });
+    
+            let errored = false;
+    
+            request.once(`error`, (err) => {
+                errored = true;
+    
+                if(`${err}`.toLowerCase().includes(`aborted`)) {
+                    console.warn(`Connection was aborted`);
 
-        request.once(`close`, () => {
-            console.log(`close event triggered! (${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`)
-        })
+                    const ip = url.split(`//`)[1].split(`:`)[0];
+                    
+                    console.log(`Removing ip ${ip} from pool`);
+
+                    const index = pool.findIndex(o => o.location == ip);
+                    if(index != -1) {
+                        console.log(`location ${ip} found! (index ${index})`)
+                        pool.splice(index, 1);
+                    }
+
+                    run(req, res, specifiedUrl)
+                } else {
+                    console.error(`error occured in stack for ${requestTo}: ${err}`, err && err.stack ? err.stack : err);
+                    console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`);
+                    if(`${err}`.includes(`aborted`)) {} else rej({
+                        error: true,
+                        message: `${err}`,
+                        url,
+                    });
+                }
+            });
+    
+            request.once(`close`, () => {
+                console.log(`close event triggered! (${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`)
+            })
+        } catch(e) {
+            console.error(`ERROR IN STREAMING WITH RUN FUNC: `, e)
+            res.end()
+        }
     });
 
     let endpoints = require('fs').readdirSync(`./lib`);
