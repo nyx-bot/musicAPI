@@ -137,7 +137,7 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                     if(args.indexOf(`-o`) !== -1) args.splice(args.indexOf(`-o`), 2);
                     if(args.indexOf(`-P`) !== -1) args.splice(args.indexOf(`-P`), 2);
                     //if(args.indexOf(`--no-part`) !== -1) args.splice(args.indexOf(`--no-part`), 1);
-                    args.push(`--fixup`, `never`)
+                    //args.push(`--fixup`, `never`)
                 }
 
                 console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"`)
