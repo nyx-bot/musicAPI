@@ -187,7 +187,7 @@ module.exports = ({app, auth}) => {
     
             let errored = false;
     
-            request.once(`error`, (err) => {
+            request.on(`error`, (err) => {
                 errored = true;
     
                 if(`${err}`.toLowerCase().includes(`aborted`)) {
@@ -207,11 +207,11 @@ module.exports = ({app, auth}) => {
                 } else {
                     console.error(`error occured in stack for ${requestTo}: ${err}`, err && err.stack ? err.stack : err);
                     console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`);
-                    if(`${err}`.includes(`aborted`)) {} else rej({
+                    /*if(`${err}`.includes(`aborted`)) {} else rej({
                         error: true,
                         message: `${err}`,
                         url,
-                    });
+                    });*/
                 }
             });
     
