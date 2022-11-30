@@ -44,10 +44,10 @@ module.exports = ({app, auth}) => {
             pool[existingIndex].timeout = setTimeout((toRemove) => {
                 const index = pool.findIndex(o => o.location == toRemove);
                 if(index != -1) {
-                    console.log(`location ${toRemove} did not re-register within 15 seconds, removing!`)
+                    console.log(`location ${toRemove} did not re-register within 5 seconds, removing!`)
                     pool.splice(index, 1);
                 }
-            }, 15000, `${ip}`);
+            }, 5000, `${ip}`);
 
             pool[existingIndex].added = Date.now();
 
@@ -115,7 +115,7 @@ module.exports = ({app, auth}) => {
         res.send(keys)
     })
 
-    const run = (req, res, specifiedUrl) => new Promise(async (resp, rej) => {
+    const run = (req, res, specifiedUrl, seek) => new Promise(async (resp, rej) => {
         const started = Date.now();
 
         var url = specifiedUrl || getUrl();
@@ -134,6 +134,10 @@ module.exports = ({app, auth}) => {
             encoding: null,
         };
 
+        if(seek) {
+            params.uri = `${params.uri}${params.uri.includes(`?`) ? `&startTime=${seek}` : `?startTime=${seek}`}`
+        }
+
         if(req && req.body && Object.keys(req.body).length > 0) {
             console.log(`req body:`, req.body)
             params.body = Buffer.from(JSON.stringify(req.body))
@@ -148,7 +152,7 @@ module.exports = ({app, auth}) => {
 
         params.headers.authorization = auth
 
-        console.log(`${req.method.toString().toUpperCase()}/${requestTo}`)
+        console.log(`${req.method.toString().toUpperCase()}/${params.uri}`)
 
         try {
             const request = require('request')(params);
@@ -164,12 +168,32 @@ module.exports = ({app, auth}) => {
             request.pipe(res)
     
             let totalChunkLength = 0;
+
+            const ff = require('child_process').spawn(`ffmpeg`, [
+                `-i`, `-`,
+                `-f`, `null`,
+                `/dev/null`
+            ]);
+
+            let time = `00:00:00.00`
+
+            const ffmpegLog = d => {
+                if(d && d.toString() && d.toString().split(`time=`) && d.toString().split(`time=`)[1]) {
+                    let t = d.toString().trim().split(`time=`)[1].trim().split(/(\s+)/)[0];
+                    if(t) time = t;
+                }
+            }
+
+            ff.stdout.on(`data`, ffmpegLog)
+            ff.stderr.on(`data`, ffmpegLog)
     
             request.on(`data`, chunk => {
                 totalChunkLength += chunk.length
+                ff.stdin.write(chunk)
             });
 
             req.once(`abort`, () => {
+                ff.kill(`SIGKILL`)
                 connectionClosed = true;
                 try {
                     if(request && request.req && request.req) request.req.destroy()
@@ -181,6 +205,7 @@ module.exports = ({app, auth}) => {
             })
     
             req.once('close', () => {
+                ff.kill(`SIGKILL`)
                 connectionClosed = true;
                 console.log(`outside request closed connection!`);
                 try {
@@ -213,7 +238,7 @@ module.exports = ({app, auth}) => {
                     console.warn(`Failed to destroy proxy request! ${e}`)
                 }
     
-                if(!connectionClosed && (`${err}`.toLowerCase().includes(`socket hang up`) || `${err}`.toLowerCase().includes(`aborted`))) {
+                if(!connectionClosed) {
                     console.warn(`Connection was aborted (${err}) -- connection looks to be still active!`);
 
                     const ip = url.split(`//`)[1].split(`:`)[0];
@@ -227,35 +252,52 @@ module.exports = ({app, auth}) => {
                         pool.splice(index, 1);
                     }
 
-                    run(req, res, specifiedUrl).catch(e => {
-                        setTimeout(() => {
-                            console.log(`re-running! (error: ${e})`)
-                            run(req, res, specifiedUrl).catch(e => {
-                                setTimeout(() => {
-                                    console.log(`re-running! (error: ${e})`)
-                                    run(req, res, specifiedUrl).catch(e => {
-                                        setTimeout(() => {
-                                            console.log(`re-running! (error: ${e})`)
-                                            run(req, res, specifiedUrl).catch(e => {
-                                                setTimeout(() => {
-                                                    console.log(`re-running! (error: ${e})`)
-                                                    run(req, res, specifiedUrl).catch(e => {
-                                                        setTimeout(() => {
-                                                            console.log(`re-running! (error: ${e})`)
-                                                            run(req, res, specifiedUrl).catch(e2 => {
-                                                                console.error(e2)
-                                                            })
-                                                        }, 800)
-                                                    })
-                                                }, 800)
-                                            })
-                                        }, 800)
-                                    })
-                                }, 800)
-                            })
-                        }, 800)
+                    ff.once(`exit`, (code, sig) => {
+                        //let seek = null;
+
+                        if(time && time != `00:00:00.00`) {
+                            console.log(`FFmpeg has successfully exited!`);
+                            console.log(`Starting at time ${time}`);
+                            seek = time;
+                        };
+
+                        run(req, res, undefined, seek).catch(e => {
+                            if(!connectionClosed) setTimeout(() => {
+                                console.log(`re-running! (error: ${e})`)
+                                run(req, res, undefined, seek).catch(e => {
+                                    if(!connectionClosed) setTimeout(() => {
+                                        console.log(`re-running! (error: ${e})`)
+                                        run(req, res, undefined, seek).catch(e => {
+                                            if(!connectionClosed) setTimeout(() => {
+                                                console.log(`re-running! (error: ${e})`)
+                                                run(req, res, undefined, seek).catch(e => {
+                                                    if(!connectionClosed) setTimeout(() => {
+                                                        console.log(`re-running! (error: ${e})`)
+                                                        run(req, res, undefined, seek).catch(e => {
+                                                            if(!connectionClosed) setTimeout(() => {
+                                                                console.log(`re-running! (error: ${e})`)
+                                                                run(req, res, undefined, seek).catch(e2 => {
+                                                                    console.error(e2);
+                                                                    res.end()
+                                                                })
+                                                            }, 800)
+                                                        })
+                                                    }, 800)
+                                                })
+                                            }, 800)
+                                        })
+                                    }, 800)
+                                })
+                            }, 800)
+                        })
                     })
+
+                    console.log(`Ending ffmpeg instance`)
+
+                    ff.stdin.end();
+                    //ff.kill(`SIGKILL`);
                 } else {
+                    ff.kill(`SIGKILL`)
                     console.error(`error occured in stack for ${requestTo}: ${err}`, err && err.stack ? err.stack : err);
                     console.log(`(${totalChunkLength / 1e+6}mb sent in ${(Date.now()-started)/1000} seconds)`);
                     /*if(`${err}`.includes(`aborted`)) {} else rej({
@@ -279,7 +321,7 @@ module.exports = ({app, auth}) => {
             })
         } catch(e) {
             console.error(`ERROR IN STREAMING WITH RUN FUNC: `, e)
-            res.end()
+            rej(e)
         }
     });
 
