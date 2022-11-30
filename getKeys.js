@@ -47,36 +47,52 @@ module.exports = (k) => new Promise(async res => {
 
         await new Promise(async res => {
             let tmpYtdl = require(`yt-dlp-wrap`).default;
-            const latest = (await tmpYtdl.getGithubReleases(1))[0], assets = latest.assets;
-
-            const latestId = latest.id
-
-            ytdlPath = `${__dirname}/etc/yt-dlp-${latestId}`;
-
-            let list = fs.readdirSync(`./etc/`).filter(s => 
-                s.startsWith(`yt-dlp`) && 
-                !s.includes(`.`) &&
-                !ytdlPath.includes(s) && 
-                fs.existsSync(`./etc/${s}/`)
-            )
-
-            for (existing of list) {
-                console.log(`Deleting yt-dlp at ${existing}`);
-                fs.rmSync(`./etc/` + existing);
-            };
-
-            if(!fs.existsSync(ytdlPath)) {
-                tmpYtdl.downloadFromGithub( ytdlPath, latest.tag_name ).then(() => {
-                    if(fs.existsSync(ytdlPath)) {
-                        console.log(`successfully downloaded temporary binary!`)
-                    } else {
-                        console.log(`path has not been verified! youtube compatibility may be hindered`)
-                    };
-
+            try {
+                const latest = (await tmpYtdl.getGithubReleases(1))[0], assets = latest.assets;
+    
+                const latestId = latest.id
+    
+                ytdlPath = `${__dirname}/etc/yt-dlp-${latestId}`;
+    
+                let list = fs.readdirSync(`./etc/`).filter(s => 
+                    s.startsWith(`yt-dlp`) && 
+                    !s.includes(`.`) &&
+                    !ytdlPath.includes(s) && 
+                    fs.existsSync(`./etc/${s}/`)
+                )
+    
+                for (existing of list) {
+                    console.log(`Deleting yt-dlp at ${existing}`);
+                    fs.rmSync(`./etc/` + existing);
+                };
+    
+                if(!fs.existsSync(ytdlPath)) {
+                    tmpYtdl.downloadFromGithub( ytdlPath, latest.tag_name ).then(() => {
+                        if(fs.existsSync(ytdlPath)) {
+                            console.log(`successfully downloaded temporary binary!`)
+                        } else {
+                            console.log(`path has not been verified! youtube compatibility may be hindered`)
+                        };
+    
+                        res()
+                    })
+                } else {
+                    console.log(`Latest yt-dlp exists! (v. ${latestId})`);
                     res()
-                })
-            } else {
-                console.log(`Latest yt-dlp exists! (v. ${latestId})`);
+                }
+            } catch(e) {
+                console.warn(`Unable to finish ytdl update!`, e);
+
+                if(ytdlPath.endsWith(`yt-dlp`)) {
+                    let list = fs.readdirSync(`./etc/`).filter(s => 
+                        s.startsWith(`yt-dlp`) && 
+                        !s.includes(`.`) &&
+                        !fs.existsSync(`./etc/${s}/`)
+                    );
+                    console.log(list)
+                    ytdlPath = `${__dirname}/etc/${list[0]}`
+                };
+
                 res()
             }
         })
