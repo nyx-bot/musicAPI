@@ -178,7 +178,9 @@ module.exports = ({app, auth}) => {
                 } catch(e) {
                     console.warn(`Failed to destroy proxy request! ${e}`)
                 }
-            })
+            });
+
+            req.once(`error`, console.error)
     
             req.once('close', () => {
                 connectionClosed = true;
@@ -190,14 +192,6 @@ module.exports = ({app, auth}) => {
                 } catch(e) {
                     console.warn(`Failed to destroy proxy request! ${e}`)
                 }
-                /*res({
-                    request: request,
-                    response: response,
-                    firstChunk,
-                    totalChunkLength: () => { return totalChunkLength; },
-                    passthru,
-                    url,
-                });*/
             });
     
             let errored = false;
