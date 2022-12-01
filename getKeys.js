@@ -138,24 +138,25 @@ module.exports = (k) => new Promise(async res => {
         }
     };
 
-    const client = new Spotify.Client();
-
-    try {
-        await client.login(config.keys.spotify.clientID, config.keys.spotify.cllientSecret);
-        keys.spotify = client.token;
-    } catch(e) {console.error(e)
+    const client = await new Promise(async res => {
         try {
-            await client.login(config.keys.spotify.clientID, config.keys.spotify.cllientSecret);
-            keys.spotify = client.token;
-        } catch(e) {console.error(e)
-            try {
-                await client.login(config.keys.spotify.clientID, config.keys.spotify.cllientSecret);
-                keys.spotify = client.token;
-            } catch(e) {console.error(e)};
-        };
-    };
+            const client = new Spotify.Client({
+                token: { 
+                    clientID: config.keys.spotify.clientID, 
+                    clientSecret: config.keys.spotify.cllientSecret 
+                },
+                onReady() {
+                    console.log(`Spotify connection created!`)
+                    res(client)
+                }
+            });
+        } catch(e) {
+            console.error(e);
+            res(null)
+        }
+    })
 
-    if(keys.spotify) {keys.clients.spotify = new Spotify.Client(keys.spotify)};
+    if(client) keys.clients.spotify = client
 
     keys.genius = config.keys.genius
 
