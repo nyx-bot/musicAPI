@@ -176,11 +176,16 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                         global.streamCache[input].nyxData.lastUpdate = Date.now();
                     };
                 };
+
+                let lastPercent = 0
     
                 playback.on(json.nyxData.livestream ? `data` : `progress`, (progress) => {
                     initialRun(progress && typeof progress.percent == `number` ? progress : {percent: 1})
                     //console.log('processed ' + Math.round(progress.percent) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentKbps || `0`}kbps [${progress.timemark}]`);
-                    if(progress.percent) console.log(`processed ` + Math.round(progress.percent || 0) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentSpeed} speed -- ETA: ${progress.eta}`)
+                    if(progress.percent && Math.round(progress.percent || 0) != lastPercent) {
+                        lastPercent = Math.round(progress.percent || 0)
+                        console.log(`processed ` + Math.round(progress.percent || 0) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentSpeed} speed -- ETA: ${progress.eta}`)
+                    }
                 });
         
                 playback.once(`close`, () => {
