@@ -213,7 +213,7 @@ module.exports = ({app, auth}) => {
                     console.warn(`Failed to destroy proxy request! ${e}`)
                 }
     
-                if(!connectionClosed && (`${err}`.toLowerCase().includes(`socket hang up`) || `${err}`.toLowerCase().includes(`aborted`))) {
+                if(!connectionClosed) {
                     console.warn(`Connection was aborted (${err}) -- connection looks to be still active!`);
 
                     const ip = url.split(`//`)[1].split(`:`)[0];
