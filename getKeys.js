@@ -139,6 +139,8 @@ module.exports = (k) => new Promise(async res => {
     };
 
     const client = await new Promise(async res => {
+        setTimeout(res, 15000)
+
         try {
             const client = new Spotify.Client({
                 token: { 
