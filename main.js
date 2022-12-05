@@ -19,7 +19,6 @@ module.exports = ({app, auth}) => {
             runningProc = cp.spawn(`node`, args);
             runningProc.stdout.on(`data`, d => console.log(`FB | ` + d.toString().trim().split(`\n`).join(`\nFB | `)))
             runningProc.stderr.on(`data`, d => console.error(`FB | ` + d.toString().trim().split(`\n`).join(`\nFB | `)))
-            runningProc = thisProc;
         } else if(((pool.length === 1 && pool[0].location == `127.0.0.1`) || pool.length === 0) && runningProc) {
             console.log(`checkPool called; there are still no servers in the pool, but the fallback server is running.`)
         } else if(pool.length > 0 && runningProc) {
