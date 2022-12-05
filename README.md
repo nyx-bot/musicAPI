@@ -72,7 +72,7 @@ This endpoint looks up the songs in a certain playlist (soon to be updated for u
 
 ### [GET] /search/{query}
 
-This endpoint is deprecated in favor of `/findMatchingSong` -- that endpoint also provides multiple results.
+This endpoint is a wrapper for the **`POST`** endpoint `/findMatchingSong`, allowing you to look up a song without needing a post request.
 
 ### [GET] /stream/{url}
 
