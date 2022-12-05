@@ -48,7 +48,7 @@ module.exports = ({app, auth}) => {
                 } else console.log(`Ping sending is not enabled!`)
             };
 
-            setInterval(sendToMainProcess, 5000); sendToMainProcess();
+            setInterval(sendToMainProcess, 2500); sendToMainProcess();
         
             require('cron').job(`* * * * *`, sendToMainProcess).start(); sendToMainProcess()
         });
