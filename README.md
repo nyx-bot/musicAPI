@@ -19,6 +19,8 @@ Make a copy of the applicable config JSON file; copy "config.exampleNode.json" t
 - To run the main process / pooling server, run `node server main`. This is accessible through `http://{ip}:1400/`
 - To run a node process and add it to the pool of servers accessible via the main server, make sure to create your config.json and point the `mainLocation` property to your main server's ip address & port (like: `http://mainLocation:1400/`). This type of server is accessible through `http://{ip}:1366/`
 
+To make things easier, you can always run `node server main` on its own, as it spawns its own node client if no other node servers are detected, but if you are using a service such as PM2, I highly recommend spawning both `node server main` and `node server` in their own instances for better error handling (as the main server holds on to the request if the node server crashes, and waits for it to come back online)
+
 You can access any endpoint available through the main server the exact same as you would through a node server. The main server is simply a proxy that pools multiple locations.
 
 ## Endpoints:
