@@ -35,7 +35,7 @@ module.exports = async ({app, auth}) => {
     };
     
     setInterval(() => {
-        console.log(`musicApi nodes:\n| ${pool.length === 0 ? `{none}` : `- ${pool.map(o => `${o.location} // ~${Math.floor((Date.now() - o.added)/1000)} seconds ago`).join(`\n - `)}`}\n| > ${fallback ? `(fallback online)` : `(fallback offline)`}`)
+        console.log(`musicApi nodes:\n| ${pool.length === 0 ? `{none}` : `| - ${pool.map(o => `${o.location} // ~${Math.floor((Date.now() - o.added)/1000)} seconds ago`).join(`\n - `)}`}\n| > ${fallback ? `(fallback online)` : `(fallback offline)`}`)
     }, 20000)
 
     app.get(`/registerMusicClient`, async (req, res) => {
