@@ -32,6 +32,8 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
     } })
 
     while(true) await new Promise(async res => {
+        pendingRestart = false;
+        
         runningProc = require('child_process').spawn(`node`, [
             `server`, 
             ...process.argv.slice(2).filter(s => s != `main` && s != `debug`), 
@@ -57,7 +59,7 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
 
             blockedStrings = [
                 "Checking for updates...",
-                "Did not fetch updates -- sendPings is disabled",
+                //"Did not fetch updates -- sendPings is disabled",
                 "Ping sending is not enabled!"
             ]
 
@@ -70,11 +72,13 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
             //console.log(`pendingRestart timer`)
             if(runningProc.generatedID == procId && runningProc.pendingRestartTimer) {
                 if(pendingRestart === true) {
+                    console.log(`Pending restart was true, killing proc.`)
                     runningProc.kill("SIGINT")
                 } else runningProc.pendingRestartTimer = setInterval(() => {
                     //console.log(`pendingRestart interval`)
                     if(runningProc.generatedID == procId && runningProc.pendingRestartTimer) {
                         if(pendingRestart === true) {
+                            console.log(`Pending restart was true, killing proc.`)
                             runningProc.kill("SIGINT")
                         }
                     } else if(runningProc.pendingRestartTimer && runningProc.generatedID == procId) {
@@ -84,7 +88,7 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
             }
         };
 
-        runningProc.pendingRestartTimer = setTimeout(pendingRestartFunc, 20000)
+        runningProc.pendingRestartTimer = setTimeout(pendingRestartFunc, 60000)
     
         runningProc.stdout.on(`data`, d => {
             if(!ready && d.toString().includes(`online`)) ready = true;

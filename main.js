@@ -60,8 +60,10 @@ module.exports = async ({app, auth}) => {
     
                 //console.log(`${ip} already exists in location pool! (index ${existingIndex} in array) -- removing timeout & resetting!`)
             } else {
-                if(pool.length === 0) global.fallbackProc.restart()
-                pool.push({
+                if(pool.length === 0) {
+                    console.log(`Pool length was 0, restarting fb to offload`)
+                    global.fallbackProc.restart()
+                }; pool.push({
                     location: ip,
                     timeout: setTimeout((toRemove) => {
                         const index = pool.findIndex(o => o.location == toRemove);
