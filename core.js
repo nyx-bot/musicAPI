@@ -1,9 +1,9 @@
 const core = {};
 
-const spawnAutoRestart = (restart, time) => new Promise(async res => setTimeout(async () => {
+const spawnAutoRestart = (restart, time) => setTimeout(async () => {
     console.log(`fb autorestart time!`);
     restart().then(res)
-}, time))
+}, time)
 
 core.spawnFallback = async (autoRestart) => new Promise(async res => {
     let runningProc, pendingRestart = false;
@@ -18,7 +18,6 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
             });
 
             runningProc.once(`close`, () => {
-                if(runningProc.pendingRestartTimer) clearTimeout(runningProc.pendingRestartTimer)
                 res()
             })
         } else {
@@ -45,7 +44,7 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
             //const time = 10000
 
             console.log(`Restarting fallback process in ${require('./util').time(time).string}`)
-            spawnAutoRestart(restart, time) // restart every 30 mins
+            runningProc.thisAutoRestart = spawnAutoRestart(restart, time) // restart every 30 mins
         }
 
         let ready = false;
@@ -101,6 +100,8 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
 
         runningProc.on(`close`, (code, signal) => {
             console.log(`FB PROCESS CLOSED -- CODE ${code}`);
+            if(runningProc.thisAutoRestart) clearTimeout(runningProc.thisAutoRestart)
+            if(runningProc.pendingRestartTimer) clearTimeout(runningProc.pendingRestartTimer)
             res()
         })
     })

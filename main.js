@@ -59,7 +59,8 @@ module.exports = async ({app, auth}) => {
                 pool[existingIndex].added = Date.now();
     
                 //console.log(`${ip} already exists in location pool! (index ${existingIndex} in array) -- removing timeout & resetting!`)
-            } else {
+            } else {=
+                if(pool.length === 0) global.fallbackProc.restart()
                 pool.push({
                     location: ip,
                     timeout: setTimeout((toRemove) => {
@@ -382,10 +383,10 @@ module.exports = async ({app, auth}) => {
 
     app.use(handler)
 
-    server = app.listen(1400, function () {
+    server = app.listen(1400, async function () {
         console.log(`online! port ${server.address().port}; listening to auth key ${auth}`);
 
-        require(`./core`).spawnFallback(true);
+        global.fallbackProc = await require(`./core`).spawnFallback(true);
     
         let cron = require('cron');
         let job = new cron.CronJob(`* * * * *`, () => {
