@@ -23,7 +23,7 @@ module.exports = (k) => new Promise(async res => {
                         auth: require('./config.json').authKey
                     }
                 }, (e, r) => {
-                    console.log(`Received keys! (Status: ${r.statusCode})`)
+                    console.log(`Received keys! (Status: ${r && r.statusCode ? r.statusCode : `--`})`)
                     if(e) {
                         console.warn(`(WARNING) unable to request for config keys: ${e}`);
                     } else {
