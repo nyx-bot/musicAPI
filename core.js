@@ -26,7 +26,10 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
         }
     })
 
-    res({ restart })
+    res({ restart, kill: () => {
+        console.log(`Killing fb`)
+        runningProc.kill("SIGKILL")
+    } })
 
     while(true) await new Promise(async res => {
         runningProc = require('child_process').spawn(`node`, [
