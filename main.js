@@ -59,7 +59,7 @@ module.exports = async ({app, auth}) => {
                 pool[existingIndex].added = Date.now();
     
                 //console.log(`${ip} already exists in location pool! (index ${existingIndex} in array) -- removing timeout & resetting!`)
-            } else {=
+            } else {
                 if(pool.length === 0) global.fallbackProc.restart()
                 pool.push({
                     location: ip,
