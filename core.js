@@ -17,7 +17,10 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
                 console.log(`Told fallback process to stop sending pings! (${r.statusCode})`)
             });
 
-            runningProc.once(`close`, res)
+            runningProc.once(`close`, () => {
+                if(runningProc.pendingRestartTimer) clearTimeout(runningProc.pendingRestartTimer)
+                res()
+            })
         } else {
             console.warn(`There is no running fallback process to close, returning...`)
             res(false)
@@ -29,20 +32,23 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
     while(true) await new Promise(async res => {
         runningProc = require('child_process').spawn(`node`, [
             `server`, 
-            ...process.argv.slice(2).filter(s => s != `main`), 
+            ...process.argv.slice(2).filter(s => s != `main` && s != `debug`), 
             `--mainLocation=http://127.0.0.1:1400`, 
             `debug`
         ]);
 
+        const procId = require('./util').idGen(8);
+        runningProc.generatedID = procId;
+
         if(autoRestart) {
             const time = 1.8e+6
+            //const time = 10000
 
             console.log(`Restarting fallback process in ${require('./util').time(time).string}`)
             spawnAutoRestart(restart, time) // restart every 30 mins
         }
 
         let ready = false;
-        let pendingRestartTimer = null;
 
         const filter = (d) => {
             d = d.toString().trim()
@@ -60,24 +66,30 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
 
         const pendingRestartFunc = () => {
             //console.log(`pendingRestart timer`)
-            if(pendingRestart === true) {
-                runningProc.kill("SIGINT")
-            } else pendingRestartTimer = setInterval(() => {
-                //console.log(`pendingRestart interval`)
+            if(runningProc.generatedID == procId && runningProc.pendingRestartTimer) {
                 if(pendingRestart === true) {
                     runningProc.kill("SIGINT")
-                }
-            }, 1000)
+                } else runningProc.pendingRestartTimer = setInterval(() => {
+                    //console.log(`pendingRestart interval`)
+                    if(runningProc.generatedID == procId && runningProc.pendingRestartTimer) {
+                        if(pendingRestart === true) {
+                            runningProc.kill("SIGINT")
+                        }
+                    } else if(runningProc.pendingRestartTimer && runningProc.generatedID == procId) {
+                        clearTimeout(runningProc.pendingRestartTimer)
+                    }
+                }, 1000)
+            }
         };
 
-        pendingRestartTimer = setTimeout(pendingRestartFunc, 20000)
+        runningProc.pendingRestartTimer = setTimeout(pendingRestartFunc, 20000)
     
         runningProc.stdout.on(`data`, d => {
             if(!ready && d.toString().includes(`online`)) ready = true;
 
             if(filter(d)) {
-                if(pendingRestartTimer) clearTimeout(pendingRestartTimer);
-                pendingRestartTimer = setTimeout(pendingRestartFunc, 20000)
+                if(runningProc.pendingRestartTimer) clearTimeout(runningProc.pendingRestartTimer);
+                runningProc.pendingRestartTimer = setTimeout(pendingRestartFunc, 20000)
 
                 if(ready) console.log(`FB | ` + d.toString().trim().split(`\n`).join(`\nFB | `))
             }
