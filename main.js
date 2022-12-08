@@ -3,33 +3,12 @@ const { PassThrough } = require('stream');
 const cp = require('child_process')
 
 const locationMaps = {};
+let fallback = false;
 
 let blacklistedIps = [];
 
-module.exports = ({app, auth}) => {
+module.exports = async ({app, auth}) => {
     let pool = []; let i = 0;
-
-    let runningProc = null;
-
-    let checkPool = () => {
-        if(pool.length === 0 && !runningProc) {
-            const args = [`server`, ...process.argv.slice(2).filter(s => s != `main`), `--mainLocation=http://127.0.0.1:1400`];
-            console.log(`checkPool called; THERE ARE NO SERVERS IN THE POOL, STARTING FALLBACK SERVER WITH ARGS "${args.join(` `)}"`);
-
-            runningProc = cp.spawn(`node`, args);
-            runningProc.stdout.on(`data`, d => console.log(`FB | ` + d.toString().trim().split(`\n`).join(`\nFB | `)))
-            runningProc.stderr.on(`data`, d => console.error(`FB | ` + d.toString().trim().split(`\n`).join(`\nFB | `)))
-        } else if(((pool.length === 1 && pool[0].location == `127.0.0.1`) || pool.length === 0) && runningProc) {
-            console.log(`checkPool called; there are still no servers in the pool, but the fallback server is running.`)
-        } else if(pool.length > 0 && runningProc) {
-            console.log(`checkPool called; there are now ${pool.length} servers in the pool, and a fallback server is running! terminating!`);
-
-            runningProc.kill(`SIGKILL`);
-            runningProc = null;
-        } else {
-            console.log(`checkPool called; there are ${pool.length} servers and ${runningProc ? `a` : `no`} running fallback process.`)
-        }
-    }
 
     let getUrl = () => {
         i++;
@@ -43,6 +22,9 @@ module.exports = ({app, auth}) => {
             console.log(`serving ${pool.length-1} (reset; ${i-1} did not exist [tried ${i}/${pool.length}]), as ${pool[pool.length-1].location}`)
             i = 0;
             linkToUse = pool[pool.length-1].location
+        } else if(fallback) {
+            console.log(`No external nodes are online; serving fallback!`)
+            return `http://127.0.0.1:1366`
         } else return null;
 
         while(linkToUse.toString().endsWith(`/`)) linkToUse = linkToUse.split(``).slice(0, -1).join(``);
@@ -53,52 +35,66 @@ module.exports = ({app, auth}) => {
     };
     
     setInterval(() => {
-        console.log(`musicApi nodes:\n| ${pool.length === 0 ? `{none}` : `- ${pool.map(o => `${o.location} // ~${Math.floor((Date.now() - o.added)/1000)} seconds ago`).join(`\n - `)}`}`)
+        console.log(`musicApi nodes:\n| ${pool.length === 0 ? `{none}` : `- ${pool.map(o => `${o.location} // ~${Math.floor((Date.now() - o.added)/1000)} seconds ago`).join(`\n - `)}`}\n| > ${fallback ? `(fallback online)` : `(fallback offline)`}`)
     }, 20000)
 
     app.get(`/registerMusicClient`, async (req, res) => {
         const ip = (req.headers[`CF-Connecting-IP`] || req.headers[`cf-connecting-ip`] || req.headers['x-forwarded-for'] || req.ip).replace(`::ffff:`, ``);
 
-        let existingIndex = pool.findIndex(o => o.location == ip);
-        let blacklisted = blacklistedIps.findIndex(o => o == ip);
-
-        if(existingIndex != -1 && blacklisted === -1) {
-            clearTimeout(pool[existingIndex].timeout);
-
-            pool[existingIndex].timeout = setTimeout((toRemove) => {
-                const index = pool.findIndex(o => o.location == toRemove);
-                if(index != -1) {
-                    console.log(`location ${toRemove} did not re-register within 5 seconds, removing!`)
-                    pool.splice(index, 1);
-                    checkPool()
-                }
-            }, 5000, `${ip}`);
-
-            pool[existingIndex].added = Date.now();
-
-            //console.log(`${ip} already exists in location pool! (index ${existingIndex} in array) -- removing timeout & resetting!`)
-        } else {
-            pool.push({
-                location: ip,
-                timeout: setTimeout((toRemove) => {
+        if(ip != `127.0.0.1`) {
+            let existingIndex = pool.findIndex(o => o.location == ip);
+            let blacklisted = blacklistedIps.findIndex(o => o == ip);
+    
+            if(existingIndex != -1 && blacklisted === -1) {
+                clearTimeout(pool[existingIndex].timeout);
+    
+                pool[existingIndex].timeout = setTimeout((toRemove) => {
                     const index = pool.findIndex(o => o.location == toRemove);
                     if(index != -1) {
-                        console.log(`location ${toRemove} did not re-register within 15 seconds, removing!`)
+                        console.log(`location ${toRemove} did not re-register within 5 seconds, removing!`)
                         pool.splice(index, 1);
-                        checkPool()
                     }
-                }, 15000, `${ip}`), // remove object after 15 seconds if not registered again -- nodes are supposed to ping every 5-10 seconds
+                }, 5000, `${ip}`);
+    
+                pool[existingIndex].added = Date.now();
+    
+                //console.log(`${ip} already exists in location pool! (index ${existingIndex} in array) -- removing timeout & resetting!`)
+            } else {
+                pool.push({
+                    location: ip,
+                    timeout: setTimeout((toRemove) => {
+                        const index = pool.findIndex(o => o.location == toRemove);
+                        if(index != -1) {
+                            console.log(`location ${toRemove} did not re-register within 5 seconds, removing!`)
+                            pool.splice(index, 1);
+                        }
+                    }, 5000, `${ip}`), // remove object after 5 seconds if not registered again -- nodes are supposed to ping every 5-10 seconds
+                    added: Date.now(),
+                }); existingIndex = pool.findIndex(o => o.location == ip);
+    
+                //console.log(`Successfully added ${ip}! (index ${existingIndex} in array) -- new entry!`)
+            };
+    
+            res.send({
+                error: false,
+                message: `Successfully added ${ip}! (index ${existingIndex} in array)`
+            })
+        } else {
+            if(fallback && fallback.timeout) clearTimeout(fallback.timeout);
+
+            fallback = {
+                location: ip,
+                timeout: setTimeout(() => {
+                    if(fallback) {
+                        fallback = false;
+                        console.log(`Fallback has not returned after 5 seconds, clearing...`)
+                    } else {
+                        console.log(`Fallback was already false!`)
+                    }
+                }, 5000), // remove object after 15 seconds if not registered again -- nodes are supposed to ping every 5-10 seconds
                 added: Date.now(),
-            }); existingIndex = pool.findIndex(o => o.location == ip);
-            checkPool()
-
-            //console.log(`Successfully added ${ip}! (index ${existingIndex} in array) -- new entry!`)
-        };
-
-        res.send({
-            error: false,
-            message: `Successfully added ${ip}! (index ${existingIndex} in array)`
-        })
+            }; existingIndex = pool.findIndex(o => o.location == ip);
+        }
     });
 
     app.get(`/unregisterMusicClient`, async (req, res) => {
@@ -112,7 +108,6 @@ module.exports = ({app, auth}) => {
             clearTimeout(pool[existingIndex].timeout);
             
             pool.splice(existingIndex, 1);
-            checkPool()
 
             console.log(`Removed ${ip}`);
 
@@ -247,7 +242,6 @@ module.exports = ({app, auth}) => {
                         console.log(`location ${ip} found! (index ${index})`)
                         clearTimeout(pool[index].timeout);
                         pool.splice(index, 1);
-                        checkPool()
                     }
 
                     run(req, res, specifiedUrl).catch(e => {
@@ -391,7 +385,7 @@ module.exports = ({app, auth}) => {
     server = app.listen(1400, function () {
         console.log(`online! port ${server.address().port}; listening to auth key ${auth}`);
 
-        checkPool()
+        require(`./core`).spawnFallback(true);
     
         let cron = require('cron');
         let job = new cron.CronJob(`* * * * *`, () => {
