@@ -88,6 +88,13 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                 
                 if(input.entries.find(o => o.entries)) input.entries = input.entries.find(o => o.entries && o.entries.length > 0).entries
 
+                if(!input.uploader && input.entries.find(o => o.channel != null)) {
+                    input.uploader = input.entries.find(o => o.channel != null).channel
+                }
+                if(!input.uploader_url && input.entries.find(o => o.channel_url != null)) {
+                    input.uploader_url = input.entries.find(o => o.channel_url != null).channel_url
+                }
+
                 if(!input.entries[0].duration && !retried) {
                     console.log(`Duration is missing on entries! (${input.entries.filter(o => o.duration).length} entries has duration)`, input.entries[0]);
                     retried = true;
