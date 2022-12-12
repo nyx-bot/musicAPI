@@ -11,8 +11,6 @@ module.exports = (k) => new Promise(async res => {
             process.argv.find(s => s.startsWith(`--mainLocation=`)).split(`=`).slice(1).join(`=`) : 
             require('./config.json').mainLocation;
     
-        const superagent = require('superagent');
-    
         let config;
         
         while(!config) {
@@ -29,6 +27,7 @@ module.exports = (k) => new Promise(async res => {
                     } else {
                         config = require('./config.json');
                         config.keys = r.body;
+                        if(typeof config.keys == `string`) config.keys = JSON.parse(config.keys)
                     };
                     resolve()
                 })
@@ -51,11 +50,43 @@ module.exports = (k) => new Promise(async res => {
         };
 
         console.log(`Config loaded with ${Object.keys(config).length} keys`)
-    
-        const Spotify = require('spotify-api.js');
-        const { fetchKey } = require("soundcloud-key-fetch");
+        
         const geniusapiold = require('genius-api');
         const geniusapi = require('genius-lyrics');
+
+        keys.spotify = await new Promise(async res => {
+            if(config && config.keys && config.keys.spotify && ((config.keys.spotify.clientID && config.keys.spotify.clientSecret) || config.keys.spotify.token)) {
+                console.log(`Creating spotify`, config.keys.spotify)
+
+                if(config.keys.spotify.token) {
+                    res(config.keys.spotify.token)
+                } else {
+                    require('request').post({
+                        url: `https://accounts.spotify.com/api/token`,
+                        headers: {
+                            Authorization: `Basic ${Buffer.from(`${config.keys.spotify.clientID}:${config.keys.spotify.clientSecret}`).toString(`base64`)}`
+                        },
+                        form: {
+                            grant_type: `client_credentials`,
+                        },
+                        json: true
+                    }, (e, resp, body) => {
+                        if(e) {
+                            console.log(`error`, e);
+                            res(null)
+                        } else if(body) {
+                            console.log(`got body!`, body)
+                            if(body.access_token) {
+                                res(body.access_token)
+                            } else res(null)
+                        } else res(null)
+                    })
+                }
+            } else {
+                console.log(`Not creating spotify, no spotify key`, config)
+                res(null)
+            }
+        })
     
         let ytdlPath;
     
