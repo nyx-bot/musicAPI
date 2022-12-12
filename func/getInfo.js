@@ -83,6 +83,23 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
 
             const thisId = require(`../util`).idGen(8)
 
+            if(input.direct) {
+                console.log(`This is a direct download link, calling ffprobe for ${input.url}...`);
+
+                try {
+                    const info = await ffprobe(input.url);
+
+                    let serviceName = link.split(`//`)[1].split(`.`).slice(-3,-2)[0].split(`/`)[0]
+
+                    input.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)}`;
+                    input.uploader_url = link;
+
+                    if(info.format && info.format.duration) input.duration = Math.round(info.format.duration)
+                } catch(e) {
+                    console.warn(`Failed to get ffprobe info: ${e}`, e)
+                }
+            };
+
             if(input.entries && typeof input.entries == `object`) {
                 console.log(`THIS IS A PLAYLIST! Parsing as such (entries length: ${input.entries.length})`);
                 
@@ -177,23 +194,6 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                 console.log(`Adding nyxData object: `, json.nyxData)
 
                 json.url = link;
-
-                if(json.direct) {
-                    console.log(`This is a direct download link, calling ffprobe for ${json.url}...`);
-
-                    try {
-                        const info = await ffprobe(json.url);
-
-                        let serviceName = link.split(`//`)[1].split(`.`).slice(-3,-2)[0].split(`/`)[0]
-
-                        json.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)}`;
-                        json.uploader_url = link;
-
-                        if(info.format && info.format.duration) json.duration = Math.round(info.format.duration)
-                    } catch(e) {
-                        console.warn(`Failed to get ffprobe info: ${e}`, e)
-                    }
-                };
 
                 global.streamCache[link] = json;
                 global.streamCache[origLink] = json;
