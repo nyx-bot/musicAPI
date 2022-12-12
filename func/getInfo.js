@@ -47,9 +47,28 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                 require('superagent').get(`http://127.0.0.1:1366/lookupSpotify/${id}`).set(`auth`, require(`../config.json`).authKey).then(r => {
                     if(r.body) {
                         console.log(`found spotify result for ${id}!\n- title: ${r.body.title}\n- duration: ${r.body.duration[0]}\n- artist: ${r.body.artists[0]}${r.body.artists.length > 1 ? ` + ${r.body.artists.length-1} more...` : ``}`);
-                        console.log(`starting youtube search for equivalent...`);
+                        console.log(`starting global search for equivalent...`);
 
-                        require('./findYoutubeEquivalent')({
+                        require(`./generalSong`)({
+                            keys,
+
+                            title: r.body.title,
+                            artist: r.body.artists[0],
+                            duration: r.body.duration[0]
+                        }).then(async r2 => {
+                            const yt = r2.top;
+                            console.log(`got equivalent:\n| TITLE:\n| - Spotify: ${r.body.title}\n| - ${yt.source}: ${yt.title}\n| ARTIST:\n| - Spotify: ${r.body.artists[0]}\n| - ${yt.source}: ${yt.artists[0]}\n|\n| NEW LINK: ${yt.url}`);
+                            link = yt.url;
+                            res(true);
+                        }).catch(e => {
+                            console.error(e)
+                            rej({
+                                error: true,
+                                message: `[SPOTIFY] Unable to lookup url provided! [2]`,
+                            })
+                        })
+
+                        /*require('./findYoutubeEquivalent')({
                             title: r.body.title,
                             artist: r.body.artists[0],
                             duration: r.body.duration[0]
@@ -64,7 +83,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                                 error: true,
                                 message: `[SPOTIFY] Unable to lookup url provided! [2]`,
                             })
-                        })
+                        })*/
                     } else {
                         console.log(`unable to find spotify track!\n- original link: link\n- given to spotify lookup: ${id}\n- body:`, r.body)
                     }
