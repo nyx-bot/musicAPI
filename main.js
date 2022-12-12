@@ -388,18 +388,20 @@ module.exports = async ({app, auth}) => {
     server = app.listen(1400, async function () {
         console.log(`online! port ${server.address().port}; listening to auth key ${auth}`);
 
-        global.fallbackProc = await require(`./core`).spawnFallback(true);
-
-        const beforeExit = () => {
-            global.fallbackProc.kill(); 
-            process.exit(0)
+        if(process.argv.indexOf(`--no-fallback`) === -1) {
+            global.fallbackProc = await require(`./core`).spawnFallback(true);
+    
+            const beforeExit = () => {
+                global.fallbackProc.kill(); 
+                process.exit(0)
+            }
+    
+            process.on('beforeExit', beforeExit)
+            process.on('exit', beforeExit)
+            process.on('SIGINT', beforeExit)
+            process.on('SIGUSR1', beforeExit)
+            process.on('SIGUSR2', beforeExit)
         }
-
-        process.on('beforeExit', beforeExit)
-        process.on('exit', beforeExit)
-        process.on('SIGINT', beforeExit)
-        process.on('SIGUSR1', beforeExit)
-        process.on('SIGUSR2', beforeExit)
     
         let cron = require('cron');
         let job = new cron.CronJob(`* * * * *`, () => {
