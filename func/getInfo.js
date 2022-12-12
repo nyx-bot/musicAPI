@@ -89,7 +89,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
                 try {
                     const info = await ffprobe(input.url);
 
-                    let serviceName = link.split(`//`)[1].split(`.`).slice(-3,-2)[0].split(`/`)[0]
+                    let serviceName = link.split(`//`)[1].split(`.`).slice(-4, -3).slice(-1)[0]
 
                     input.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)}`;
                     input.uploader_url = link;
