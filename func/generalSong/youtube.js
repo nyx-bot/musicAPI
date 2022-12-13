@@ -48,17 +48,21 @@ module.exports = ({
             artist.forEach(a => {
                 if(a.includes(` `)) {
                     search.unshift(`${a} ${title}`)
+                    search.unshift(`"${a}" ${title}`)
                     search.push(...a.split(` `).map(ar => `${ar} ${title}`))
                 } else {
                     search.unshift(`${a} ${title}`)
+                    search.unshift(`"${a}" ${title}`)
                 }
             })
         } else {
             if(artist.includes(` `)) {
                 search.unshift(`${artist} ${title}`)
+                search.unshift(`"${artist}" ${title}`)
                 search.push(...artist.split(` `).map(a => `${a} ${title}`))
             } else {
                 search.unshift(`${artist} ${title}`)
+                search.unshift(`"${artist}" ${title}`)
             }
         }
     };
