@@ -3,18 +3,151 @@ const fs = require('fs');
 const { ffprobe } = require('../util')
 
 module.exports = (link, keys) => new Promise(async (res, rej) => {
+    const origLink = `${link}`
+
     const ytdl = keys.clients.ytdl;
 
     let retried = false;
 
     console.log(`getting metadata for ${link}`, link);
 
+    const processInfo = async (input) => {
+        console.log(`got metadata for ${link} -- ${input.title}`);
+
+        const thisId = require(`../util`).idGen(8);
+
+        let livestream = input.duration ? false : true;
+
+        if(input.direct) {
+            console.log(`This is a direct download link, calling ffprobe for ${input.url}...`);
+
+            try {
+                const info = await ffprobe(input.url);
+
+                let serviceName = link.split(`//`)[1].split(`.`).slice(-4, -3).slice(-1)[0]
+
+                input.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)}`;
+                input.uploader_url = link;
+
+                if(info.format && info.format.duration) input.duration = Math.round(info.format.duration)
+            } catch(e) {
+                console.warn(`Failed to get ffprobe info: ${e}`, e)
+            }
+        };
+
+        if(input.entries && typeof input.entries == `object`) {
+            console.log(`THIS IS A PLAYLIST! Parsing as such (entries length: ${input.entries.length})`);
+            
+            if(input.entries.find(o => o.entries)) input.entries = input.entries.find(o => o.entries && o.entries.length > 0).entries
+
+            if(!input.uploader && input.entries.find(o => o.channel != null)) {
+                input.uploader = input.entries.find(o => o.channel != null).channel
+            }
+            if(!input.uploader_url && input.entries.find(o => o.channel_url != null)) {
+                input.uploader_url = input.entries.find(o => o.channel_url != null).channel_url
+            }
+
+            if(!input.entries[0].duration && !retried) {
+                console.log(`Duration is missing on entries! (${input.entries.filter(o => o.duration).length} entries has duration)`, input.entries[0]);
+                retried = true;
+                return ytdl.execPromise(`${link} --dump-single-json --skip-download`.split(` `)).then(i => {
+                    processInfo(JSON.parse(i))
+                }).catch(e => {
+                    console.error(e);
+                    res(null)
+                });
+            } else {
+                if(retried) console.log(`ALREADY RETRIED ONCE`);
+
+                let obj = input;
+
+                input.entries = input.entries.map(json => { 
+                    console.log(json.url, json.webpage_url)
+                    
+                    const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
+                        url: `https://i.nyx.bot/null.png`,
+                        width: 1024,
+                        height: 1024,
+                    };
+            
+                    json.thumbnail = thumbnail;
+    
+                    json.nyxData = {
+                        livestream: livestream ? true : false,
+                        downloadedLengthInMs: 0,
+                        lastUpdate: Date.now(),
+                        thisId,
+                    };
+
+                    return json;
+                });
+
+                if(obj.thumbnails && obj.thumbnails.length > 0) {
+                    obj.thumbnail = obj.thumbnails.slice(-1)[0]
+                } else if(input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`)) {
+                    obj.thumbnail = input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`).thumbnail
+                } else obj.thumbnail = {
+                    url: `https://i.nyx.bot/null.png`,
+                    width: 1024,
+                    height: 1024,
+                };
+
+                global.streamCache[link] = obj;
+                global.streamCache[origLink] = obj;
+        
+                setTimeout(() => {
+                    delete global.streamCache[link];
+                    delete global.streamCache[origLink];
+                }, 4.32e+7);
+
+                res(obj)
+            }
+        } else {
+            const json = input;
+            
+            console.log(`this is NOT a playlist.`)
+
+            json.selectedFormat = json.formats.sort((a, b) => {
+                return a.quality - b.quality
+            })
+
+            const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
+                url: `https://i.nyx.bot/null.png`,
+                width: 1024,
+                height: 1024,
+            };
+
+            json.thumbnail = thumbnail;
+
+            json.nyxData = {
+                livestream: json.duration ? false : true,
+                downloadedLengthInMs: 0,
+                lastUpdate: Date.now(),
+                thisId,
+            };
+
+            console.log(`Adding nyxData object: `, json.nyxData)
+
+            json.url = link;
+
+            global.streamCache[link] = json;
+            global.streamCache[origLink] = json;
+              
+            setTimeout(() => {
+                delete global.streamCache[link];
+                delete global.streamCache[origLink];
+            }, 4.32e+7);
+
+            res(json);
+        }
+    }
+
     if(global.streamCache[link]) {
         console.log(`metadata exists!`)
         return res(global.streamCache[link])
+    } else if(typeof link == `object`) {
+        processInfo(link)
     } else {
-        const origLink = `${link}`
-
         const domain = link.split(`/`).slice(2,3)[0].split(`.`).filter(a => `${a}`.toLowerCase() !== `www`).slice(0, -1).join(`.`);
     
         const cookieDir = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/${domain}.txt`;
@@ -97,150 +230,16 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
             }).catch(rej)
         };
 
-        const processInfo = async (input, livestream) => {
-            console.log(`got metadata for ${link} -- ${input.title}`);
-
-            const thisId = require(`../util`).idGen(8)
-
-            if(input.direct) {
-                console.log(`This is a direct download link, calling ffprobe for ${input.url}...`);
-
-                try {
-                    const info = await ffprobe(input.url);
-
-                    let serviceName = link.split(`//`)[1].split(`.`).slice(-4, -3).slice(-1)[0]
-
-                    input.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)}`;
-                    input.uploader_url = link;
-
-                    if(info.format && info.format.duration) input.duration = Math.round(info.format.duration)
-                } catch(e) {
-                    console.warn(`Failed to get ffprobe info: ${e}`, e)
-                }
-            };
-
-            if(input.entries && typeof input.entries == `object`) {
-                console.log(`THIS IS A PLAYLIST! Parsing as such (entries length: ${input.entries.length})`);
-                
-                if(input.entries.find(o => o.entries)) input.entries = input.entries.find(o => o.entries && o.entries.length > 0).entries
-
-                if(!input.uploader && input.entries.find(o => o.channel != null)) {
-                    input.uploader = input.entries.find(o => o.channel != null).channel
-                }
-                if(!input.uploader_url && input.entries.find(o => o.channel_url != null)) {
-                    input.uploader_url = input.entries.find(o => o.channel_url != null).channel_url
-                }
-
-                if(!input.entries[0].duration && !retried) {
-                    console.log(`Duration is missing on entries! (${input.entries.filter(o => o.duration).length} entries has duration)`, input.entries[0]);
-                    retried = true;
-                    return ytdl.execPromise(`${link} --dump-single-json --skip-download`.split(` `)).then(i => {
-                        processInfo(JSON.parse(i))
-                    }).catch(e => {
-                        console.error(e);
-                        res(null)
-                    });
-                } else {
-                    if(retried) console.log(`ALREADY RETRIED ONCE`);
-
-                    let obj = input;
-    
-                    input.entries = input.entries.map(json => { 
-                        console.log(json.url, json.webpage_url)
-                        
-                        const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
-                            url: `https://i.nyx.bot/null.png`,
-                            width: 1024,
-                            height: 1024,
-                        };
-                
-                        json.thumbnail = thumbnail;
-        
-                        json.nyxData = {
-                            livestream: livestream ? true : false,
-                            downloadedLengthInMs: 0,
-                            lastUpdate: Date.now(),
-                            thisId,
-                        };
-    
-                        return json;
-                    });
-
-                    if(obj.thumbnails && obj.thumbnails.length > 0) {
-                        obj.thumbnail = obj.thumbnails.slice(-1)[0]
-                    } else if(input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`)) {
-                        obj.thumbnail = input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`).thumbnail
-                    } else obj.thumbnail = {
-                        url: `https://i.nyx.bot/null.png`,
-                        width: 1024,
-                        height: 1024,
-                    };
-    
-                    global.streamCache[link] = obj;
-                    global.streamCache[origLink] = obj;
-            
-                    setTimeout(() => {
-                        delete global.streamCache[link];
-                        delete global.streamCache[origLink];
-                    }, 4.32e+7);
-    
-                    res(obj)
-                }
-            } else {
-                const json = input;
-                
-                console.log(`this is NOT a playlist.`)
-
-                json.selectedFormat = json.formats.sort((a, b) => {
-                    return a.quality - b.quality
-                })
-
-                const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
-                    url: `https://i.nyx.bot/null.png`,
-                    width: 1024,
-                    height: 1024,
-                };
-
-                json.thumbnail = thumbnail;
-    
-                json.nyxData = {
-                    livestream: json.duration ? false : true,
-                    downloadedLengthInMs: 0,
-                    lastUpdate: Date.now(),
-                    thisId,
-                };
-
-                console.log(`Adding nyxData object: `, json.nyxData)
-
-                json.url = link;
-
-                global.streamCache[link] = json;
-                global.streamCache[origLink] = json;
-                  
-                setTimeout(() => {
-                    delete global.streamCache[link];
-                    delete global.streamCache[origLink];
-                }, 4.32e+7);
-
-                res(json);
-            }
-        }
-
-        ytdl.execPromise(`${link} --dump-single-json --flat-playlist`.split(` `)).then(i => {
+        ytdl.execPromise(`${link} --dump-single-json --flat-playlist --no-check-certificates --extractor-args youtube:skip=hls`.split(` `)).then(i => {
             processInfo(JSON.parse(i))
         }).catch(e => {
-            if(`${e}`.toLowerCase().includes(`no video formats found`)) {
-                console.warn(`No video formats were found, trying again but without args!`)
-                ytdl.execPromise(`${link} --dump-single-json`.split(` `)).then(i => {
-                    processInfo(JSON.parse(i), true)
-                }).catch(e2 => {
-                    console.error(e2);
-                    res(null)
-                })
-            } else {
-                console.error(e);
+            console.warn(`Error was thrown: ${e}\nStarting parse process again with less options...`)
+            ytdl.execPromise(`${link} --dump-single-json`.split(` `)).then(i => {
+                processInfo(JSON.parse(i), true)
+            }).catch(e2 => {
+                console.error(e2);
                 res(null)
-            }
+            })
         });
     }
 })
