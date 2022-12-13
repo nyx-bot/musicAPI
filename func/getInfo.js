@@ -230,7 +230,7 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
             }).catch(rej)
         };
 
-        ytdl.execPromise(`${link} --dump-single-json --flat-playlist --no-check-certificates --extractor-args youtube:skip=hls`.split(` `)).then(i => {
+        ytdl.execPromise(`${link} --dump-single-json --flat-playlist --no-check-certificates`.split(` `)).then(i => {
             processInfo(JSON.parse(i))
         }).catch(e => {
             console.warn(`Error was thrown: ${e}\nStarting parse process again with less options...`)

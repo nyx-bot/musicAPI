@@ -51,6 +51,7 @@ module.exports = (k) => new Promise(async res => {
 
         console.log(`Config loaded with ${Object.keys(config).length} keys`)
         
+        const fetchKey = require(`soundcloud-key-fetch`).fetchKey
         const geniusapiold = require('genius-api');
         const geniusapi = require('genius-lyrics');
 
@@ -168,6 +169,24 @@ module.exports = (k) => new Promise(async res => {
     
         if(fs.existsSync(`./etc/soundcloud.txt`)) {
             keys.sc = fs.readFileSync(`./etc/soundcloud.txt`).toString()
+        };
+
+        try {
+            keys.sc = await fetchKey();
+            fs.writeFileSync(`./etc/soundcloud.txt`, keys.sc)
+            console.log(`Saved new SC key`)
+        } catch(e) {console.error(e)
+            try {
+                keys.sc = await fetchKey();
+                fs.writeFileSync(`./etc/soundcloud.txt`, keys.sc)
+                console.log(`Saved new SC key`)
+            } catch(e) {console.error(e)
+                try {
+                    keys.sc = await fetchKey();
+                    fs.writeFileSync(`./etc/soundcloud.txt`, keys.sc)
+                    console.log(`Saved new SC key`)
+                } catch(e) {console.error(e)}
+            }
         };
     
         keys.genius = config.keys.genius
