@@ -66,6 +66,13 @@ update().then(() => {
         const auth = require('./config.json').authKey;
         
         app.use((req, res, next) => {
+            const started = Date.now();
+
+            res.origSend = res.send; res.send = (o) => {
+                if(typeof o == `object`) o.timeTaken = Date.now() - started;
+                res.origSend(o)
+            }
+
             if(global.sendPings) {
                 const valid = (req.headers.auth || req.headers.authorization || req.headers.authentication || req.query.auth || req.query.key) == auth;
                 if(!req.originalUrl.includes(`registerMusic`)) console.log(`ENDPOINT REQUESTED: ${req.path}; AUTHORIZATION KEY IS ${(req.headers.auth || req.headers.authorization || req.headers.authentication || req.params.auth || req.params.key)}, BEING ${valid ? `VALID.` : `INVALID.`}`);
