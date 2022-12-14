@@ -15,26 +15,33 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
         if(!global.streamCache[input]) {
             console.log(`got input of ${input}, but no cache yet! getting now c:`)
             try {
-                await require('./getInfo')(input, keys)
+                require('./getInfo')(input, keys)
+                console.log(`got metadata!`)
             } catch(e) {
                 console.error(e); return rej(`Could not get metadata! ${e}`);
             }
         };
 
-        let json = global.streamCache[input];
+        let json = global.streamCache[input] || {
+            title: `Unknown`,
+            url: input,
+            extractor: `${input}`.split(`//`)[1].split(`/`)[0].split(`.`).slice(-2, -1)[0],
+            id: `unk-` + Buffer.from(input).toString(`base64`).slice(-8),
+            nyxData: {
+                livestream: true,
+                forged: true,
+            },
+            formats: [],
+        };
 
         if(!json || !json.url) return rej(`No streamable link! (input: ${input})`, global.streamCache[input]);
 
         const jsonFileID = require(`../util`).idGen(8);
 
-        const nyxData = json.nyxData; delete json.nyxData;
-
-        //fs.writeFileSync(`./etc/${jsonFileID}.json`, JSON.stringify(json, null, 4));
-
-        json.nyxData = nyxData;
-
         const domain = json.extractor;
         const id = json.id;
+
+        console.log(`downloading for domain ${domain} and id ${id}`)
 
         if(fs.existsSync(`./etc/${domain}/`) && fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id))) {
             return res({domain, id, json, location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id))}`})
@@ -46,10 +53,6 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
         let fileRoot = fileLocation.split(`/`).slice(0, -1).join(`/`)
 
         if(!fs.existsSync(`${fileRoot}/`)) fs.mkdirSync(`${fileRoot}/`, { recursive: true })
-
-        const stream = json ? json.url : null;
-
-        let overrideLocation;
 
         const process = () => {
             try {
@@ -80,9 +83,9 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                                 return 1
                             } else return 0
                         }); bestAudio = audioBitrates[0]
-                    } else {
+                    }/* else {
                         return rej(`Unable to stream audio! (This source is not allowing me to play anything!)`)
-                    }
+                    }*/
                 };
 
                 let args = [
@@ -100,7 +103,7 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                     args.push(`--load-info-json`, `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${jsonFileID}.json`)
                 } else args.push(json.url)
 
-                console.log(`best audio bitrate: ${bestAudio.abr} with sampling rate of ${bestAudio.asr}`);
+                if(bestAudio) console.log(`best audio bitrate: ${bestAudio.abr} with sampling rate of ${bestAudio.asr}`);
     
                 const bestAudioWithoutVideo = audioBitrates.filter(o => typeof o.vbr != `number`)[0];
 
@@ -112,21 +115,28 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                 } else {
                     if(bestAudio && bestAudioWithoutVideo) console.log(`bestAudio is NOT equivalent to bestAudioWithoutVideo (${bestAudio.abr} / ${bestAudio.asr} > ${bestAudioWithoutVideo.abr} / ${bestAudioWithoutVideo.asr})`);
                     
-                    let difference = bestAudio.abr ? bestAudio.abr * (bestAudio.asr || 1) - bestAudioWithoutVideo.abr * (bestAudioWithoutVideo.asr || 1) : -11000;
+                    let difference = bestAudio && bestAudio.abr ? bestAudio.abr * (bestAudio.asr || 1) - (bestAudioWithoutVideo || {abr : 0}).abr * ((bestAudioWithoutVideo || {asr: 0}).asr || 1) : -11000;
 
                     if(difference < 10000 && difference > -10000) {
                         console.log(`difference is less than 10kbps off, using audio anyways! (${`${difference}`.replace(`-`, ``)})\n| FORMAT: ${bestAudioWithoutVideo.format_id}`);
                         format_id = bestAudioWithoutVideo.format_id
                     } else {
-                        console.log(`difference is too high! (${`${difference}`.replace(`-`, ``)}) -- using video and extracting audio\n| FORMAT: ${bestAudio.format_id}`)
-                        format_id = bestAudio.format_id
-                        args.push(`--no-keep-video`)
+                        console.log(`difference is too high! (${`${difference}`.replace(`-`, ``)}) -- using video and extracting audio\n| FORMAT: ${bestAudio && bestAudio.format_id ? bestAudio.format_id : `NONE, YT-DLP IS ON ITS OWN THIS TIME`}`)
+                        if(bestAudio && bestAudio.format_id) {
+                            format_id = bestAudio.format_id
+                            args.push(`--no-keep-video`)
+                        } else {
+                            args.push(`--downloader`, `ffmpeg`)
+                            args.push(`--downloader-args`, `ffmpeg:-acodec copy -vn`)
+                            //args.push(`--compat-options`, `multistreams`)
+                            //args.push(`--dump-single-json`, `--no-simulate`)
+                        }
                     }
                 };
 
                 console.log(`Using format ${format_id}, corresponding to format obj:`, json.formats.find(o => o.format_id == format_id))
 
-                args.push(`--format`, `${format_id}`);
+                if(format_id) args.push(`--format`, `${format_id}`);
 
                 const abort = new AbortController();
 
@@ -142,7 +152,9 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
 
                 console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"`)
 
-                let playback = ytdl[args.indexOf(`-o`) == -1 ? `execStream` : `exec`](args, {}, abort.signal);
+                const run = args.indexOf(`-o`) == -1 ? `execStream` : `exec`
+
+                let playback = ytdl[run](args, {}, abort.signal);
     
                 const abortNow = () => {
                     if(!ytdlCompleted) {
@@ -156,22 +168,23 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                         }
                     }
                 }
+
                 const initialRun = (progress) => {
                     const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
 
                     if(waitUntilComplete) {
                         console.log(`requested to wait until complete! holding on to file for now...`)
-                    } else if(!sentBack && file && Math.round(progress.percent || 0) != 0) {
+                    } else if(!sentBack && run == `exec` && Math.round(progress.percent || 0) != 0) {
                         sentBack = true;
                         console.log(`returning file`)
                         res({domain, id, json, location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`, abort: abortNow})
-                    } else if(!sentBack && json.nyxData.livestream && Math.round(progress.percent || 0) != 0) {
+                    } else if(!sentBack && run == `execStream` && Math.round(progress.percent || 0) != 0) {
                         sentBack = true;
                         console.log(`returning stream`)
                         res({domain, id, json, location: null, stream: playback, abort: abortNow})
                     }
             
-                    if(global.streamCache[input].nyxData && progress.timemark) {
+                    if(global.streamCache[input] && global.streamCache[input].nyxData && progress.timemark) {
                         global.streamCache[input].nyxData.downloadedLengthInMs = util.time(progress.timemark.split(`.`)[0]).units.ms
                         global.streamCache[input].nyxData.lastUpdate = Date.now();
                     };
