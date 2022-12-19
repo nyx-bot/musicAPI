@@ -3,15 +3,17 @@ const { compareTwoStrings } = require('string-similarity')
 const fs = require('fs')
 
 module.exports = ({
-    title, artist, duration, keys
+    title, artist, duration, keys, source
 }) => new Promise(async res => {
     const threads = readyManager();
 
-    const services = fs.readdirSync(`./func/generalSong`);
+    const services = source ? [source + `.js`] : fs.readdirSync(`./func/generalSong`);
 
     let threadNames = [], results = {
         top: {}
     };
+
+    console.log(services)
 
     services.forEach(service => {
         threadNames.push(service.split(`.`).slice(0, -1).join(`.`))
