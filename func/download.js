@@ -12,15 +12,19 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
     let sentBack = false;
 
     if(input) {
+        let getInfoPromise;
+
         if(!global.streamCache[input]) {
             console.log(`got input of ${input}, but no cache yet! getting now c:`)
             try {
-                require('./getInfo')(input, keys)
+                getInfoPromise = require('./getInfo')(input, keys)
                 console.log(`got metadata!`)
             } catch(e) {
                 console.error(e); return rej(`Could not get metadata! ${e}`);
             }
         };
+
+        if(input.includes(`spotify.com`) && getInfoPromise) await getInfoPromise 
 
         let json = global.streamCache[input] || {
             title: `Unknown`,
