@@ -6,7 +6,7 @@ const fs = require('fs')
 
 const util = require('../util');
 
-module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (res, rej) => {
+module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => new Promise(async (res, rej) => {
     const ytdl = keys.clients.ytdl;
 
     let sentBack = false;
@@ -194,7 +194,9 @@ module.exports = ({link: input, keys, waitUntilComplete}) => new Promise(async (
                     };
                 };
 
-                let lastPercent = 0
+                let lastPercent = 0;
+
+                if(returnInstantly) initialRun({percent: 1});
     
                 playback.on(json.nyxData.livestream ? `data` : `progress`, (progress) => {
                     initialRun(progress && typeof progress.percent == `number` ? progress : {percent: 1})
