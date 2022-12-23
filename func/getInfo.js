@@ -97,7 +97,7 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
 
                 ctx.cacheLocation(link, origLink)
 
-                if(input && noDownload != true) {
+                if(input && noDownload != true && input.entries[0] && !input.entries[0].nyxData.livestream) {
                     console.log(`Downloading on getInfo request enabled!`);
                     require('./download')({
                         link: input,
@@ -147,7 +147,7 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
 
             ctx.cacheLocation(link, origLink)
 
-            if(input && noDownload != true) {
+            if(input && noDownload != true && !json.nyxData.livestream) {
                 console.log(`Downloading on getInfo request enabled!`);
                 require('./download')({
                     link: input,
