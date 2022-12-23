@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-const { ffprobe } = require('../util')
+const { ffprobe } = require('../util');
 
 module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
     const origLink = `${link}`
@@ -95,6 +95,8 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
                 global.streamCache[link] = obj;
                 global.streamCache[origLink] = obj;
 
+                ctx.cacheLocation(link, origLink)
+
                 if(input && noDownload != true) {
                     console.log(`Downloading on getInfo request enabled!`);
                     require('./download')({
@@ -142,6 +144,8 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
 
             global.streamCache[link] = json;
             global.streamCache[origLink] = json;
+
+            ctx.cacheLocation(link, origLink)
 
             if(input && noDownload != true) {
                 console.log(`Downloading on getInfo request enabled!`);
