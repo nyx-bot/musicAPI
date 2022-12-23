@@ -6,6 +6,8 @@ const fs = require('fs')
 
 const util = require('../util');
 
+let processes = {};
+
 module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => new Promise(async (res, rej) => {
     const ytdl = keys.clients.ytdl;
 
@@ -14,19 +16,19 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
     if(input) {
         let getInfoPromise;
 
-        if(!global.streamCache[input]) {
+        if(typeof input == `string` && !global.streamCache[input]) {
             console.log(`got input of ${input}, but no cache yet! getting now c:`)
             try {
-                getInfoPromise = require('./getInfo')(input, keys)
+                getInfoPromise = require('./getInfo')(input, keys, true)
                 console.log(`got metadata!`)
             } catch(e) {
                 console.error(e); return rej(`Could not get metadata! ${e}`);
             }
         };
 
-        if(input.includes(`spotify.com`) && getInfoPromise) await getInfoPromise 
+        if(`${input}`.includes(`spotify.com`) && getInfoPromise) await getInfoPromise 
 
-        let json = global.streamCache[input] || {
+        let json = (typeof input == `object` ? input : global.streamCache[input]) || {
             title: `Unknown`,
             url: input,
             extractor: `${input}`.split(`//`)[1].split(`/`)[0].split(`.`).slice(-2, -1)[0],
@@ -38,7 +40,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
             formats: [],
         };
 
-        if(!json || !json.url) return rej(`No streamable link! (input: ${input})`, global.streamCache[input]);
+        if(!json || !json.url) return rej(`No streamable link! (input: ${input})`, json);
 
         const jsonFileID = require(`../util`).idGen(8);
 
@@ -159,19 +161,34 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
                 const run = args.indexOf(`-o`) == -1 ? `execStream` : `exec`
 
                 let playback = ytdl[run](args, {}, abort.signal);
-    
-                const abortNow = () => {
-                    if(!ytdlCompleted) {
-                        console.log(`Abort signal received!`);
-                        abort.abort();
-    
-                        const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
-                        if(file) {
-                            console.log(`File exists at "./etc/${domain}/${file}"`)
-                            fs.rmSync(`./etc/${domain}/${file}`)
+
+                let lastPercent = 0;
+
+                const returnJson = {
+                    domain, 
+                    id, 
+                    json,
+                    location: null, 
+                    stream: null,
+                    abort: () => {
+                        if(!ytdlCompleted) {
+                            console.log(`Abort signal received!`);
+                            delete processes[json.url];
+                            abort.abort();
+        
+                            const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
+                            if(file) {
+                                console.log(`File exists at "./etc/${domain}/${file}"`)
+                                fs.rmSync(`./etc/${domain}/${file}`)
+                            }
                         }
-                    }
-                }
+                    }, 
+                    getLastPercent: () => lastPercent
+                };
+
+                returnJson.process = playback;
+
+                processes[json.url] = returnJson;
 
                 const initialRun = (progress) => {
                     const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
@@ -181,11 +198,13 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
                     } else if(!sentBack && run == `exec` && Math.round(progress.percent || 0) != 0) {
                         sentBack = true;
                         console.log(`returning file`)
-                        res({domain, id, json, location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`, abort: abortNow})
+                        returnJson.location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`
+                        res(returnJson)
                     } else if(!sentBack && run == `execStream` && Math.round(progress.percent || 0) != 0) {
                         sentBack = true;
                         console.log(`returning stream`)
-                        res({domain, id, json, location: null, stream: playback, abort: abortNow})
+                        returnJson.stream = playback;
+                        res(returnJson)
                     }
             
                     if(global.streamCache[input] && global.streamCache[input].nyxData && progress.timemark) {
@@ -193,8 +212,6 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
                         global.streamCache[input].nyxData.lastUpdate = Date.now();
                     };
                 };
-
-                let lastPercent = 0;
 
                 if(returnInstantly) initialRun({percent: 1});
     
@@ -210,17 +227,21 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
                 playback.once(`close`, () => {
                     ytdlCompleted = true;
 
+                    delete processes[json.url];
+
                     const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
 
                     if(fs.existsSync(`./etc/${jsonFileID}.json`)) fs.rmSync(`./etc/${jsonFileID}.json`)
 
                     if(waitUntilComplete) {
                         console.log(`returning file`)
-                        res({domain, id, json, location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`})
+                        returnJson.location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`
+                        res(returnJson)
                     } else if(!sentBack && file) {
                         sentBack = true;
                         console.log(`returning file`)
-                        res({domain, id, json, location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`})
+                        returnJson.location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`
+                        res(returnJson)
                     }
     
                     console.log(`successfully processed ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)}`);
@@ -234,6 +255,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
                 });
         
                 playback.on(`error`, (err, stdout, stderr) => {
+                    delete processes[json.url];
                     console.error(`Failed to process ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)}: ${err}`, err);
                     if(fs.existsSync(fileLocation)) fs.unlinkSync(fileLocation);
                     delete global.streamCache[input];
@@ -245,7 +267,38 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
         if(fs.existsSync(fileLocation)) {
             console.log(`${fileLocation} equivalent of ${input} saved!`)
             res({domain, id, json, location: originalFileLocation, alreadyExists: true})
-        } else process({});
+        } else if (processes[json.url]) {
+            console.log(`Existing process for this URL exists! Waiting for fileLocation to exist.`);
+
+            let attemptsLeft = 30;
+            while(attemptsLeft > 0) {
+                if(processes[json.url] && fs.readdirSync(`./etc/${processes[json.url].domain}/`).find(f => f.startsWith(processes[json.url].id))) {
+                    console.log(`Process has returned a response: manually found song through domain directory!`)
+                    attemptsLeft = -1;
+                    res(Object.assign({}, processes[json.url], { location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${processes[json.url].domain}/${fs.readdirSync(`./etc/${processes[json.url].domain}/`).find(f => f.startsWith(processes[json.url].id))}` }))
+                } else if(processes[json.url] && (processes[json.url].stream || (processes[json.url].location && fs.existsSync(processes[json.url].location)))) {
+                    console.log(`Process has returned a response: ${processes[json.url].stream ? `stream has been provided!` : `location has been updated & file exists!`}`)
+                    attemptsLeft = -1;
+                    res(processes[json.url])
+                } else if(fs.existsSync(originalFileLocation)) {
+                    console.log(`Process has returned a response: originalFileLocation exists!`)
+                    attemptsLeft = -1;
+                    res(Object.assign({}, processes[json.url], { location: originalFileLocation }))
+                } else if(fs.existsSync(fileLocation)) {
+                    console.log(`Process has returned a response: fileLocation exists!`)
+                    attemptsLeft = -1;
+                    res(Object.assign({}, processes[json.url], { location: fileLocation }))
+                } else {
+                    //console.log(`No response yet.. (${attemptsLeft} attempts left)`)
+                    await new Promise(r => setTimeout(r, 100));
+                    attemptsLeft--;
+                }
+            };
+
+            if(attemptsLeft === 0) process({})
+        } else {
+            process({});
+        }
     } else {
         rej(`No input`)
     }

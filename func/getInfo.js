@@ -2,7 +2,7 @@ const fs = require('fs');
 
 const { ffprobe } = require('../util')
 
-module.exports = (link, keys) => new Promise(async (res, rej) => {
+module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
     const origLink = `${link}`
 
     const ytdl = keys.clients.ytdl;
@@ -94,6 +94,16 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
 
                 global.streamCache[link] = obj;
                 global.streamCache[origLink] = obj;
+
+                if(input && noDownload != true) {
+                    console.log(`Downloading on getInfo request enabled!`);
+                    require('./download')({
+                        link: input,
+                        keys,
+                        waitUntilComplete: false,
+                        returnInstantly: true,
+                    })
+                }
         
                 setTimeout(() => {
                     delete global.streamCache[link];
@@ -132,6 +142,16 @@ module.exports = (link, keys) => new Promise(async (res, rej) => {
 
             global.streamCache[link] = json;
             global.streamCache[origLink] = json;
+
+            if(input && noDownload != true) {
+                console.log(`Downloading on getInfo request enabled!`);
+                require('./download')({
+                    link: input,
+                    keys,
+                    waitUntilComplete: false,
+                    returnInstantly: true,
+                })
+            }
               
             setTimeout(() => {
                 delete global.streamCache[link];
