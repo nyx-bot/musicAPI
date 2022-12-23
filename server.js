@@ -8,7 +8,7 @@ process.on(`uncaughtException`, console.error)
 
 global.streamCache = {};
 
-global.sendPings = (process.argv.indexOf(`debug`) !== -1 || require('./config.json').debug) ? false : true;
+global.sendPings = (process.argv.indexOf(`debug`) !== -1 || process.argv.indexOf(`--fallback`) !== -1 || require('./config.json').debug) ? false : true;
 
 console.log(`sendPings: ${global.sendPings}`)
 
