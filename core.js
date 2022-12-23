@@ -38,7 +38,7 @@ core.spawnFallback = async (autoRestart) => new Promise(async res => {
             `server`, 
             ...process.argv.slice(2).filter(s => s != `main` && s != `debug`), 
             `--mainLocation=http://127.0.0.1:1400`, 
-            `debug`
+            `--fallback`
         ]);
 
         const procId = require('./util').idGen(8);
