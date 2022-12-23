@@ -36,12 +36,12 @@ module.exports = async ({app, auth}) => {
     
     setInterval(() => {
         console.log(`musicApi nodes:\n| ${pool.length === 0 ? `{none}` : `| - ${pool.map(o => `${o.location} // ~${Math.floor((Date.now() - o.added)/1000)} seconds ago`).join(`\n - `)}`}\n| > ${fallback ? `(fallback online)` : `(fallback offline)`}`)
-    }, 20000)
-
+    }, 20000);
+    
     app.get(`/registerMusicClient`, async (req, res) => {
         const ip = (req.headers[`CF-Connecting-IP`] || req.headers[`cf-connecting-ip`] || req.headers['x-forwarded-for'] || req.ip).replace(`::ffff:`, ``);
 
-        if(ip != `127.0.0.1`) {
+        if(!req.query.fallback) {
             let existingIndex = pool.findIndex(o => o.location == ip);
             let blacklisted = blacklistedIps.findIndex(o => o == ip);
     
@@ -53,6 +53,17 @@ module.exports = async ({app, auth}) => {
                     if(index != -1) {
                         console.log(`location ${toRemove} did not re-register within 5 seconds, removing!`)
                         pool.splice(index, 1);
+
+                        const mapsArr = Object.entries(locationMaps)
+                        const mapped = mapsArr.filter(o => o[1].split(`//`)[1].split(`:`)[0] == toRemove);
+                        console.log(`There are ${mapped.length}/${mapsArr.length} cache entrie(s) to remove for this IP!`);
+
+                        for([key, o] of mapped) {
+                            console.log(`Removing ${key}...`);
+                            delete locationMaps[key]
+                        }
+
+                        console.log(`There are now ${Object.keys(locationMaps).length} cache entries available! (Lost: ${mapsArr.length - mapped.length})`)
                     }
                 }, 5000, `${ip}`);
     
@@ -62,7 +73,7 @@ module.exports = async ({app, auth}) => {
             } else {
                 if(pool.length === 0) {
                     console.log(`Pool length was 0, restarting fb to offload`)
-                    global.fallbackProc.restart()
+                    if(global.fallbackProc) global.fallbackProc.restart()
                 }; pool.push({
                     location: ip,
                     timeout: setTimeout((toRemove) => {
@@ -70,6 +81,17 @@ module.exports = async ({app, auth}) => {
                         if(index != -1) {
                             console.log(`location ${toRemove} did not re-register within 5 seconds, removing!`)
                             pool.splice(index, 1);
+
+                            const mapsArr = Object.entries(locationMaps)
+                            const mapped = mapsArr.filter(o => o[1].split(`//`)[1].split(`:`)[0] == toRemove);
+                            console.log(`There are ${mapped.length}/${mapsArr.length} cache entrie(s) to remove for this IP!`);
+
+                            for([key, o] of mapped) {
+                                console.log(`Removing ${key}...`);
+                                delete locationMaps[key]
+                            }
+
+                            console.log(`There are now ${Object.keys(locationMaps).length} cache entries available! (Lost: ${mapsArr.length - mapped.length})`)
                         }
                     }, 5000, `${ip}`), // remove object after 5 seconds if not registered again -- nodes are supposed to ping every 5-10 seconds
                     added: Date.now(),
@@ -141,8 +163,76 @@ module.exports = async ({app, auth}) => {
         res.send(keys)
     })
 
+    let endpoints = require('fs').readdirSync(`./lib`).map(s => s.split(`.`).slice(0, -1).join(`.`));
+    
+    app.get(`/setCachedLocation/:arg(*+)`, async (req, res) => {
+        const location = req.originalUrl.split(`setCachedLocation/`)[1];
+        const ip = req.ip.split(`:`).length > 1 ? req.ip.split(`:`).slice(-1)[0] : req.ip
+        const inPool = pool.find(o => o.location == ip);
+
+        const send = res.send;
+        res.send = (o) => {
+            if(o.message) console.log(` ---- \nSetting cached location:\n URL: ${location}\n TO IP: ${ip}\n MESSAGE: ${o.message}\n ---- `);
+            send(o)
+        }
+
+        if(inPool && !locationMaps[location]) {
+            locationMaps[location] = `http://${inPool.location}:1366`
+
+            res.send({
+                success: true,
+                message: `Successfully added "${location}" as a cached location to ${inPool.location}`
+            });
+        } else if(locationMaps[location]) {
+            res.send({
+                success: false,
+                message: `Failed to add "${location}": a location is already registered for this url!`
+            })
+        } else {
+            res.send({
+                success: false,
+                message: `Failed to add "${location}": this client's ip is not registered!`
+            })
+        }
+    })
+
+    const getCachedLocation = (req, endpoint) => {
+        const body = req && req.body && typeof req.body == `object` ? req.body : {}
+
+        let url = body.url, urlSource = `body`;
+
+        if(!url && endpoint) {
+            url = req.originalUrl.split(endpoint + `/`)[1];
+            urlSource = `req.originalUrl split by ${endpoint}`
+        };
+
+        if(!url && `${req.originalUrl}`.includes(`https:`)) {
+            url = `https:` + req.originalUrl.split(`https:`)[1];
+            urlSource = `scraped directly from req.originalUrl (split by "https:")`
+        }
+
+        if(!url && `${req.originalUrl}`.includes(`http:`)) {
+            url = `http:` + req.originalUrl.split(`http:`)[1];
+            urlSource = `scraped directly from req.originalUrl (split by "http:")`
+        }
+
+        let location = locationMaps[url] || null, rawIp = locationMaps[url] ? locationMaps[url].split(`//`)[1].split(`:`)[0] : null;
+        let ipExists = pool.find(o => o.location == rawIp);
+
+        console.log(`> Parsed URL as "${url}" from ${urlSource}; \n> - ${location ? `there is a cached IP address for this URL (${location} / ${rawIp})! ${ipExists ? `It is still in the pool, returning ${location}.` : `It is not in the pool, so this location will be deleted & returning null.`}` : `there is no cached IP address for this URL.`}`)
+        
+        if(!ipExists) {
+            delete locationMaps[url];
+            location = null;
+        };
+
+        return location;
+    }
+
     const run = (req, res, specifiedUrl) => new Promise(async (resp, rej) => {
         const started = Date.now();
+
+        const cachedLocation = getCachedLocation(req, endpoints.find(s => s == req.originalUrl.split(`/`)[1]));
 
         var url = specifiedUrl || getUrl();
         if(!url) return rej({
@@ -150,7 +240,9 @@ module.exports = async ({app, auth}) => {
             message: `No locations!`
         });
 
-        const requestTo = url + req.originalUrl/* + (req.originalUrl.includes(`?`) ? `&fetchOnly=true` : `?fetchOnly=true`)*/
+        console.log(`Requesting to ${cachedLocation ? `${cachedLocation} [cached response]` : `${url} [non-cached randomized server]`}`)
+
+        const requestTo = (cachedLocation || url) + req.originalUrl/* + (req.originalUrl.includes(`?`) ? `&fetchOnly=true` : `?fetchOnly=true`)*/
 
         let params = {
             method: req.method.toString().toUpperCase(),
@@ -303,85 +395,16 @@ module.exports = async ({app, auth}) => {
         }
     });
 
-    let endpoints = require('fs').readdirSync(`./lib`);
-
-    const getMap = (req) => {
-        let map = `${req.originalUrl.split(`/`).slice(2).join(`/`) ? req.originalUrl.split(`/`).slice(2).join(`/`) : req.originalUrl}`;
-        if(map.includes(`startTime=`)) map = map.replace(`?startTime=${req.query.startTime}`, ``).replace(`&startTime=${req.query.startTime}`, ``);
-
-        let toEndpoints = endpoints.find(s => req.originalUrl.toString().includes(s.toString().split(`.`).slice(0, -1).join(`.`)));
-
-        if(toEndpoints) {
-            if(map.split(toEndpoints)[1]) {
-                map = map.split(toEndpoints)[1]
-                console.log(`splitting by ${toEndpoints} -- new map: ${map}`)
-            } else console.log(`cannot split by musicApi endpoint location`)
-            map = map.split(toEndpoints)[1] ? map.split(toEndpoints)[1] : map.split(toEndpoints)[0];
-        };
-
-        console.log(`locationMap: ${map} (exists: ${locationMaps[map] ? true : false})`);
-    }
-
-    const handler = async (req, res) => {
-        try {
-            let map = getMap(req);
-    
-            const process = (r) => {
-                if(typeof r == `string`) {
-                    console.log(`adding ${r} to locationMaps for ${map}`);
-                    locationMaps[map] = {
-                        location: r.url.split(`//`)[1].split(`:`)[0],
-                        redirect: `${r.url.replace(`?startTime=${req.query.startTime}`, ``).replace(`&startTime=${req.query.startTime}`, ``)}`,
-                    }; console.log(locationMaps[map])
-                    //res.redirect(r)
-                } else {
-                    locationMaps[map] = {
-                        location: r.url.split(`//`)[1].split(`:`)[0],
-                        redirect: `${r.url.replace(`?startTime=${req.query.startTime}`, ``).replace(`&startTime=${req.query.startTime}`, ``)}`,
-                    }; console.log(locationMaps[map]);
-    
-                    var headers = r.response.headers;
-                    headers[`Connection`] = `Keep-Alive`
-    
-                    if(!res.headersSent) res.set(headers);
-    
-                    r.passthru.pipe(res)
-    
-                    //r.request.pipe(res)
-                }
-            }
-    
-            if(locationMaps[map] && pool.find(o => o.location == locationMaps[map].location)) {
-                const redirection = `http://${locationMaps[map].location}:1366${req.originalUrl}`
-                //const redirection = `${locationMaps[map].redirect}${req.query.startTime ? (locationMaps[map].redirect.includes(`?`) ? `&startTime=${req.query.startTime}` : `?startTime=${req.query.startTime}`) : ``}`;
-                console.log(`redirect already exists!`, locationMaps[map], redirection);
-                //res.redirect(redirection)
-                run(req, res, `http://${locationMaps[map].location}:1366`).then(process).catch(e => {
-                    console.error(`Could not use existing location! (${e.message ? e.message : e.toString()})`)
-                    delete locationMaps[map]; 
-                    handler(req, res);
-                })
-            } else {
-                if(locationMaps[map]) {
-                    console.log(`redirect exists, but is not in the musicapi pool! removing...`)
-                    delete locationMaps[map];
-                }
-    
-                run(req, res).then(process).catch(e => {
-                    //console.error(`${e.message ? e.message : e.toString()}`)
-                    run(req, res).then(process).catch(e => {
-                        //console.error(`${e.message ? e.message : e.toString()}`)
-                        run(req, res).then(process).catch(e => {
-                            //console.error(`${e.message ? e.message : e.toString()}`)
-                            res.end()
-                        })
-                    })
-                })
-            }
-        } catch(e) {
-            console.error(e)
-        }
-    }
+    const handler = async (req, res) => run(req, res).then(process).catch(e => {
+        //console.error(`${e.message ? e.message : e.toString()}`)
+        run(req, res).then(process).catch(e => {
+            //console.error(`${e.message ? e.message : e.toString()}`)
+            run(req, res).then(process).catch(e => {
+                //console.error(`${e.message ? e.message : e.toString()}`)
+                res.end()
+            })
+        })
+    })
 
     app.use(handler)
 
@@ -392,7 +415,7 @@ module.exports = async ({app, auth}) => {
             global.fallbackProc = await require(`./core`).spawnFallback(true);
     
             const beforeExit = () => {
-                global.fallbackProc.kill(); 
+                if(global.fallbackProc) global.fallbackProc.kill(); 
                 process.exit(0)
             }
     

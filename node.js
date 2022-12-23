@@ -3,7 +3,9 @@ const fs = require('fs')
 const endpoints = fs.readdirSync(`./lib/`);
 
 module.exports = ({app, auth}) => {
-    let spotify, ctx = {
+    let spotify;
+    
+    global.ctx = {
         idGen: function (num) {
             let retVal = "";
             let charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -16,7 +18,8 @@ module.exports = ({app, auth}) => {
             }
             return retVal;
         },
-        util: require('./util')
+        util: require('./util'),
+        cacheLocation: (...urls) => require(`./func/cacheLocation`)(auth, ...urls)
     };
     
     keyUpd = () => new Promise(async (res, rej) => {
@@ -40,7 +43,7 @@ module.exports = ({app, auth}) => {
             const sendToMainProcess = () => {
                 if(global.sendHeartbeat !== false) {
                     //console.log(`Pinging enabled!`)
-                    require(`superagent`).get(`${ctx.keys.mainLocation}/registerMusicClient`).set(`auth`, auth).then(r => {
+                    require(`superagent`).get(`${ctx.keys.mainLocation}/registerMusicClient${process.argv.indexOf(`--fallback`) !== -1 ? `?fallback=true` : ``}`).set(`auth`, auth).then(r => {
                         //console.log(`successfully registered musicAPI to nyx!`) // it's 5 seconds, don't spam the console lol
                     }).catch(e => {
                         console.error(`failed to register musicAPI to nyx! (possibly offline?) // ${e}`)
