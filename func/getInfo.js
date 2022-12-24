@@ -100,7 +100,7 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
                 if(input && noDownload != true && input.entries[0] && !input.entries[0].nyxData.livestream) {
                     console.log(`Downloading on getInfo request enabled!`);
                     require('./download')({
-                        link: input,
+                        link: input.entries[0],
                         keys,
                         waitUntilComplete: false,
                         returnInstantly: true,
