@@ -8,6 +8,8 @@ This service is compatible with [every listed media source on yt-dlp's supported
 
 ## Running the API:
 
+**Make sure that when you are downloading the repository, you do so using [the git client](https://git-scm.com/downloads) -- the Music API has a built in auto-updater that uses `git pull` regularly.**
+
 There are many ways to go about this. If you want to keep the server online for a while, I personally recommend [PM2](https://pm2.keymetrics.io/).
 
 **Make sure you install all dependencies needed: `npm i`. You also need `ffmpeg` and `ffprobe` installed to the systems hosting the node clients for audio conversion**
