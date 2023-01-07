@@ -13,6 +13,16 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
 
     let sentBack = false;
 
+    if(input && input.includes(`&startTime=`)) {
+        console.log(`download func determined that &startTime existed; trimming "&startTime=${input.split(`&startTime=`)[1]}" from the url`)
+        input = input.split(`&startTime=`)[0];
+    }
+    
+    if(input && input.includes(`?startTime=`)) {
+        console.log(`download func determined that ?startTime existed; trimming "?startTime=${input.split(`?startTime=`)[1]}" from the url`)
+        input = input.split(`?startTime=`)[0];
+    }
+
     if(input) {
         let getInfoPromise;
 
