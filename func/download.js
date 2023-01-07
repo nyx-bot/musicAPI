@@ -8,18 +8,22 @@ const util = require('../util');
 
 let processes = {};
 
-module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => new Promise(async (res, rej) => {
+module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek}) => new Promise(async (res, rej) => {
     const ytdl = keys.clients.ytdl;
 
     let sentBack = false;
 
+    let startTimeArg = seek;
+
     if(input && input.includes(`&startTime=`)) {
-        console.log(`download func determined that &startTime existed; trimming "&startTime=${input.split(`&startTime=`)[1]}" from the url`)
+        console.log(`download func determined that &startTime existed; trimming "&startTime=${input.split(`&startTime=`)[1]}" from the url`);
+        if(!startTimeArg) startTimeArg = input.split(`&startTime=`)[1].split(`&`)[0];
         input = input.split(`&startTime=`)[0];
     }
-    
+
     if(input && input.includes(`?startTime=`)) {
-        console.log(`download func determined that ?startTime existed; trimming "?startTime=${input.split(`?startTime=`)[1]}" from the url`)
+        console.log(`download func determined that ?startTime existed; trimming "?startTime=${input.split(`?startTime=`)[1]}" from the url`);
+        if(!startTimeArg) startTimeArg = input.split(`?startTime=`)[1].split(`&`)[0];
         input = input.split(`?startTime=`)[0];
     }
 
@@ -115,6 +119,8 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
                     //`--extractor-args`, `youtube:skip=dash,hls`
                 ], format_id = null;
 
+                let seeking = false;
+
                 if(fs.existsSync(`./etc/${jsonFileID}.json`)) {
                     args.push(`--load-info-json`, `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${jsonFileID}.json`)
                 } else args.push(json.url)
@@ -142,8 +148,16 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
                             format_id = bestAudio.format_id
                             args.push(`--no-keep-video`)
                         } else {
-                            args.push(`--downloader`, `ffmpeg`)
-                            args.push(`--downloader-args`, `ffmpeg:-acodec copy -vn`)
+                            args.push(`--downloader`, `ffmpeg`);
+
+                            let ffmpegArgs = `-acodec copy -vn`;
+
+                            if(startTimeArg) {
+                                ffmpegArgs = ffmpegArgs + ` -ss ${startTimeArg}`;
+                                seeking = true;
+                            }
+
+                            args.push(`--downloader-args`, `ffmpeg:${ffmpegArgs}`)
                             //args.push(`--compat-options`, `multistreams`)
                             //args.push(`--dump-single-json`, `--no-simulate`)
                         }
@@ -166,7 +180,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
                     //args.push(`--fixup`, `never`)
                 }
 
-                console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"`)
+                console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"${seeking ? `\n\n-------- SEEKING THROUGH YT-DLP FFMPEG ARGS, EXPERIMENTAL --------\n\n` : ``}`)
 
                 const run = args.indexOf(`-o`) == -1 ? `execStream` : `exec`
 
@@ -180,6 +194,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly}) => ne
                     json,
                     location: null, 
                     stream: null,
+                    seeked: seeking,
                     abort: () => {
                         if(!ytdlCompleted) {
                             console.log(`Abort signal received!`);
