@@ -12,162 +12,164 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
     console.log(`getting metadata for ${link}`, link);
 
     const processInfo = async (input) => {
-        if(input.extractor != `generic`) {
-            console.log(`got metadata for ${link} -- ${input.title}`, input);
+        console.log(`got metadata for ${link} -- ${input.title}`);
+
+        const thisId = require(`../util`).idGen(8);
+
+        let livestream = input.duration ? false : true;
+
+        if(input.parsed) {
+            return res(input)
+        } else {
+            if(input.direct) {
+                console.log(`This is a direct download link, calling ffprobe for ${input.url}...`);
     
-            const thisId = require(`../util`).idGen(8);
+                try {
+                    const info = await ffprobe(input.url);
     
-            let livestream = input.duration ? false : true;
+                    let serviceName = link.split(`//`)[1].split(`.`).slice(-4, -3).slice(-1)[0]
     
-            if(input.parsed) {
-                return res(input)
-            } else {
-                if(input.direct) {
-                    console.log(`This is a direct download link, calling ffprobe for ${input.url}...`);
-        
-                    try {
-                        const info = await ffprobe(input.url);
-        
-                        let serviceName = link.split(`//`)[1].split(`.`).slice(-4, -3).slice(-1)[0]
-        
-                        input.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)}`;
-                        input.uploader_url = link;
-        
-                        if(info.format && info.format.duration) input.duration = Math.round(info.format.duration)
-                    } catch(e) {
-                        console.warn(`Failed to get ffprobe info: ${e}`, e)
-                    }
-                };
-        
-                if(input.entries && typeof input.entries == `object`) {
-                    console.log(`THIS IS A PLAYLIST! Parsing as such (entries length: ${input.entries.length})`);
-                    
-                    if(input.entries.find(o => o.entries)) input.entries = input.entries.find(o => o.entries && o.entries.length > 0).entries
-        
-                    if(!input.uploader && input.entries.find(o => o.channel != null)) {
-                        input.uploader = input.entries.find(o => o.channel != null).channel
-                    }
-                    if(!input.uploader_url && input.entries.find(o => o.channel_url != null)) {
-                        input.uploader_url = input.entries.find(o => o.channel_url != null).channel_url
-                    }
-        
-                    if(!input.entries[0].duration && !retried) {
-                        console.log(`Duration is missing on entries! (${input.entries.filter(o => o.duration).length} entries has duration)`, input.entries[0]);
-                        retried = true;
-                        return ytdl.execPromise(`${link} --dump-single-json --skip-download`.split(` `)).then(i => {
-                            processInfo(JSON.parse(i))
-                        }).catch(e => {
-                            console.error(e);
-                            res(null)
-                        });
-                    } else {
-                        if(retried) console.log(`ALREADY RETRIED ONCE`);
-        
-                        let obj = input;
-        
-                        input.entries = input.entries.map(json => { 
-                            console.log(json.url, json.webpage_url)
-                            
-                            const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
-                                url: `https://i.nyx.bot/null.png`,
-                                width: 1024,
-                                height: 1024,
-                            };
-                    
-                            json.thumbnail = thumbnail;
-            
-                            json.nyxData = {
-                                livestream: livestream ? true : false,
-                                downloadedLengthInMs: 0,
-                                lastUpdate: Date.now(),
-                                thisId,
-                            };
-        
-                            return json;
-                        });
-        
-                        if(obj.thumbnails && obj.thumbnails.length > 0) {
-                            obj.thumbnail = obj.thumbnails.slice(-1)[0]
-                        } else if(input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`)) {
-                            obj.thumbnail = input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`).thumbnail
-                        } else obj.thumbnail = {
+                    input.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)}`;
+                    input.uploader_url = link;
+    
+                    if(info.format && info.format.duration) input.duration = Math.round(info.format.duration)
+                } catch(e) {
+                    console.warn(`Failed to get ffprobe info: ${e}`, e)
+                }
+            };
+    
+            if(input.entries && typeof input.entries == `object`) {
+                console.log(`THIS IS A PLAYLIST! Parsing as such (entries length: ${input.entries.length})`);
+                
+                if(input.entries.find(o => o.entries)) input.entries = input.entries.find(o => o.entries && o.entries.length > 0).entries
+    
+                if(!input.uploader && input.entries.find(o => o.channel != null)) {
+                    input.uploader = input.entries.find(o => o.channel != null).channel
+                }
+                if(!input.uploader_url && input.entries.find(o => o.channel_url != null)) {
+                    input.uploader_url = input.entries.find(o => o.channel_url != null).channel_url
+                }
+    
+                if(!input.entries[0].duration && !retried) {
+                    console.log(`Duration is missing on entries! (${input.entries.filter(o => o.duration).length} entries has duration)`, input.entries[0]);
+                    retried = true;
+                    return ytdl.execPromise(`${link} --dump-single-json --skip-download`.split(` `)).then(i => {
+                        processInfo(JSON.parse(i))
+                    }).catch(e => {
+                        console.error(e);
+                        res(null)
+                    });
+                } else {
+                    if(retried) console.log(`ALREADY RETRIED ONCE`);
+    
+                    let obj = input;
+    
+                    input.entries = input.entries.map(json => { 
+                        console.log(json.url, json.webpage_url)
+                        
+                        const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
                             url: `https://i.nyx.bot/null.png`,
                             width: 1024,
                             height: 1024,
                         };
-        
-                        global.streamCache[link] = obj;
-                        global.streamCache[origLink] = obj;
-        
-                        ctx.cacheLocation(link, origLink)
-        
-                        if(input && noDownload != true && input.entries[0] && !input.entries[0].nyxData.livestream) {
-                            console.log(`Downloading on getInfo request enabled!`);
-                            require('./download')({
-                                link: input.entries[0],
-                                keys,
-                                waitUntilComplete: false,
-                                returnInstantly: true,
-                            })
-                        }
                 
-                        setTimeout(() => {
-                            delete global.streamCache[link];
-                            delete global.streamCache[origLink];
-                        }, 4.32e+7);
+                        json.thumbnail = thumbnail;
         
-                        res(obj)
-                    }
-                } else {
-                    const json = input;
-                    
-                    console.log(`this is NOT a playlist.`)
-        
-                    json.selectedFormat = json.formats.sort((a, b) => {
-                        return a.quality - b.quality
-                    })
-        
-                    const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
+                        json.nyxData = {
+                            livestream: livestream ? true : false,
+                            downloadedLengthInMs: 0,
+                            lastUpdate: Date.now(),
+                            thisId,
+                        };
+    
+                        return json;
+                    });
+    
+                    if(obj.thumbnails && obj.thumbnails.length > 0) {
+                        obj.thumbnail = obj.thumbnails.slice(-1)[0]
+                    } else if(input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`)) {
+                        obj.thumbnail = input.entries.find(e => e.thumbnail && e.thumbnail.url != `https://i.nyx.bot/null.png`).thumbnail
+                    } else obj.thumbnail = {
                         url: `https://i.nyx.bot/null.png`,
                         width: 1024,
                         height: 1024,
                     };
-        
-                    json.thumbnail = thumbnail;
-        
-                    json.nyxData = {
-                        livestream: json.duration ? false : true,
-                        downloadedLengthInMs: 0,
-                        lastUpdate: Date.now(),
-                        thisId,
-                    };
-        
-                    console.log(`Adding nyxData object: `, json.nyxData)
-        
-                    json.url = link;
-        
-                    global.streamCache[link] = json;
-                    global.streamCache[origLink] = json;
-        
-                    ctx.cacheLocation(link, origLink)
-        
-                    if(input && noDownload != true && !json.nyxData.livestream) {
+    
+                    if(input.extractor != `generic`) {
+                        global.streamCache[link] = obj;
+                        global.streamCache[origLink] = obj;
+    
+                        ctx.cacheLocation(link, origLink)
+            
+                        setTimeout(() => {
+                            delete global.streamCache[link];
+                            delete global.streamCache[origLink];
+                        }, 4.32e+7);
+                    }
+    
+                    if(input && noDownload != true && input.entries[0] && !input.entries[0].nyxData.livestream && input.extractor != `generic`) {
                         console.log(`Downloading on getInfo request enabled!`);
                         require('./download')({
-                            link: input,
+                            link: input.entries[0],
                             keys,
                             waitUntilComplete: false,
                             returnInstantly: true,
                         })
                     }
-                      
+    
+                    res(obj)
+                }
+            } else {
+                const json = input;
+                
+                console.log(`this is NOT a playlist.`)
+    
+                json.selectedFormat = json.formats.sort((a, b) => {
+                    return a.quality - b.quality
+                })
+    
+                const thumbnail = json.thumbnails && json.thumbnails.length > 0 ? json.thumbnails.slice(-1)[0] : {
+                    url: `https://i.nyx.bot/null.png`,
+                    width: 1024,
+                    height: 1024,
+                };
+    
+                json.thumbnail = thumbnail;
+    
+                json.nyxData = {
+                    livestream: json.duration ? false : true,
+                    downloadedLengthInMs: 0,
+                    lastUpdate: Date.now(),
+                    thisId,
+                };
+    
+                console.log(`Adding nyxData object: `, json.nyxData)
+    
+                json.url = link;
+    
+                if(input.extractor != `generic`) {
+                    global.streamCache[link] = json;
+                    global.streamCache[origLink] = json;
+
+                    ctx.cacheLocation(link, origLink)
+        
                     setTimeout(() => {
                         delete global.streamCache[link];
                         delete global.streamCache[origLink];
                     }, 4.32e+7);
-        
-                    res(json);
                 }
+    
+                if(input && noDownload != true && !json.nyxData.livestream && input.extractor != `generic`) {
+                    console.log(`Downloading on getInfo request enabled!`);
+                    require('./download')({
+                        link: input,
+                        keys,
+                        waitUntilComplete: false,
+                        returnInstantly: true,
+                    })
+                }
+    
+                res(json);
             }
         }
     }
