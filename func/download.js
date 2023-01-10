@@ -8,41 +8,52 @@ const util = require('../util');
 
 let processes = {};
 
+const ffmpegFormats = require('child_process').execSync(`ffmpeg -formats`).toString().split(`\n`).map(s => s.trim().slice(4).split(` `)[0]).filter(s => s.length > 0 ? true : false);
+
 module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek}) => new Promise(async (res, rej) => {
+    const times = {
+        start: Date.now(),
+        firstPipe: Date.now(),
+        finish: Date.now(),
+    }
+
     const ytdl = keys.clients.ytdl;
 
     let sentBack = false;
 
     let startTimeArg = seek;
 
-    if(input && input.includes(`&startTime=`)) {
+    if(input && `${input}`.includes(`&startTime=`)) {
         console.log(`download func determined that &startTime existed; trimming "&startTime=${input.split(`&startTime=`)[1]}" from the url`);
         if(!startTimeArg) startTimeArg = input.split(`&startTime=`)[1].split(`&`)[0];
         input = input.split(`&startTime=`)[0];
     }
 
-    if(input && input.includes(`?startTime=`)) {
+    if(input && `${input}`.includes(`?startTime=`)) {
         console.log(`download func determined that ?startTime existed; trimming "?startTime=${input.split(`?startTime=`)[1]}" from the url`);
         if(!startTimeArg) startTimeArg = input.split(`?startTime=`)[1].split(`&`)[0];
         input = input.split(`?startTime=`)[0];
     }
 
     if(input) {
-        let getInfoPromise;
+        let requestedInfo = null;
 
         if(typeof input == `string` && !global.streamCache[input]) {
             console.log(`got input of ${input}, but no cache yet! getting now c:`)
             try {
-                getInfoPromise = require('./getInfo')(input, keys, true)
+                requestedInfo = await require('./getInfo')(input, keys, true);
+
+                times.gotData = Date.now();
+
                 console.log(`got metadata!`)
             } catch(e) {
                 console.error(e); return rej(`Could not get metadata! ${e}`);
             }
         };
 
-        if(`${input}`.includes(`spotify.com`) && getInfoPromise) await getInfoPromise 
+        //if(`${input}`.includes(`spotify.com`) && getInfoPromise) await getInfoPromise 
 
-        let json = (typeof input == `object` ? input : global.streamCache[input]) || {
+        let json = requestedInfo || (typeof input == `object` ? input : global.streamCache[input]) || {
             title: `Unknown`,
             url: input,
             extractor: `${input}`.split(`//`)[1].split(`/`)[0].split(`.`).slice(-2, -1)[0],
@@ -127,7 +138,8 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
 
                 if(bestAudio) console.log(`best audio bitrate: ${bestAudio.abr} with sampling rate of ${bestAudio.asr}`);
     
-                const bestAudioWithoutVideo = audioBitrates.filter(o => typeof o.vbr != `number`)[0];
+                //const bestAudioWithoutVideo = audioBitrates.filter(o => typeof o.vbr != `number`)[0];
+                const bestAudioWithoutVideo = []
 
                 if(bestAudioWithoutVideo) console.log(`best audio bitrate (without video): ${bestAudioWithoutVideo.abr} with sampling rate of ${bestAudioWithoutVideo.asr}`);
                 
@@ -146,7 +158,11 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
                         console.log(`difference is too high! (${`${difference}`.replace(`-`, ``)}) -- using video and extracting audio\n| FORMAT: ${bestAudio && bestAudio.format_id ? bestAudio.format_id : `NONE, YT-DLP IS ON ITS OWN THIS TIME`}`)
                         if(bestAudio && bestAudio.format_id) {
                             format_id = bestAudio.format_id
-                            args.push(`--no-keep-video`)
+                            args.push(`--no-keep-video`);
+
+                            if(startTimeArg) {
+                                args.push(`--downloader`, `ffmpeg`, `--downloader-args`, `ffmpeg:-ss ${startTimeArg}`);
+                            }
                         } else {
                             args.push(`--downloader`, `ffmpeg`);
 
@@ -164,14 +180,12 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
                     }
                 };
 
-                console.log(`Using format ${format_id}, corresponding to format obj:`, json.formats.find(o => o.format_id == format_id))
+                let useFormat = json.formats.find(o => o.format_id == format_id);
+
+                console.log(`Using format ${format_id}, corresponding to format obj:`, useFormat, useFormat ? useFormat.http_headers : {})
 
                 if(format_id) args.push(`--format`, `${format_id}`);
-
-                const abort = new AbortController();
-
-                let ytdlCompleted = false;
-
+    
                 if(json.nyxData.livestream) {
                     //if(args.indexOf(`--format`) !== -1) args.splice(args.indexOf(`--format`), 2)
                     if(args.indexOf(`-o`) !== -1) args.splice(args.indexOf(`-o`), 2);
@@ -180,112 +194,285 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
                     //args.push(`--fixup`, `never`)
                 }
 
-                console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"${seeking ? `\n\n-------- SEEKING THROUGH YT-DLP FFMPEG ARGS, EXPERIMENTAL --------\n\n` : ``}`)
+                const logData = (source) => {
+                    console.log(`-`.repeat(40) + `\n` + `COMPLETED PROCESSING ${domain} / ${json.id} IN ${(times.finish - times.start)/1000} SECONDS USING ${source}\n- ` + Object.entries(times).map(o => `start to ${o[0]}: ${(o[1] - times.start)/1000}s`).join(`\n- `) + `\n` + `-`.repeat(40))
+                }
 
-                const run = args.indexOf(`-o`) == -1 ? `execStream` : `exec`
-
-                let playback = ytdl[run](args, {}, abort.signal);
-
-                let lastPercent = 0;
-
-                const returnJson = {
-                    domain, 
-                    id, 
-                    json,
-                    location: null, 
-                    stream: null,
-                    seeked: seeking,
-                    abort: () => {
-                        if(!ytdlCompleted) {
-                            console.log(`Abort signal received!`);
-                            delete processes[json.url];
-                            abort.abort();
-        
-                            const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
-                            if(file) {
-                                console.log(`File exists at "./etc/${domain}/${file}"`)
-                                fs.rmSync(`./etc/${domain}/${file}`)
-                            }
-                        }
-                    }, 
-                    getLastPercent: () => lastPercent
-                };
-
-                returnJson.process = playback;
-
-                processes[json.url] = returnJson;
-
-                const initialRun = (progress) => {
-                    const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
-
-                    if(waitUntilComplete) {
-                        console.log(`requested to wait until complete! holding on to file for now...`)
-                    } else if(!sentBack && run == `exec` && Math.round(progress.percent || 0) != 0) {
-                        sentBack = true;
-                        console.log(`returning file`)
-                        returnJson.location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`
-                        res(returnJson)
-                    } else if(!sentBack && run == `execStream` && Math.round(progress.percent || 0) != 0) {
-                        sentBack = true;
-                        console.log(`returning stream`)
-                        returnJson.stream = playback;
-                        res(returnJson)
-                    }
+                const useYtdlp = () => new Promise(async (res2, rej2) => {
+                    const abort = new AbortController();
+    
+                    let ytdlCompleted = false;
+    
+                    console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"${seeking ? `\n\n-------- SEEKING THROUGH YT-DLP FFMPEG ARGS, EXPERIMENTAL --------\n\n` : ``}`)
+    
+                    const run = args.indexOf(`-o`) == -1 ? `execStream` : `exec`
+    
+                    let playback = ytdl[run](args, {}, abort.signal);
+    
+                    let lastPercent = 0;
+    
+                    const returnJson = {
+                        domain, 
+                        id, 
+                        json,
+                        location: null, 
+                        stream: null,
+                        seeked: seeking,
+                        abort: () => {
+                            if(!ytdlCompleted) {
+                                console.log(`Abort signal received!`);
+                                delete processes[json.url];
+                                abort.abort();
             
-                    if(global.streamCache[input] && global.streamCache[input].nyxData && progress.timemark) {
-                        global.streamCache[input].nyxData.downloadedLengthInMs = util.time(progress.timemark.split(`.`)[0]).units.ms
-                        global.streamCache[input].nyxData.lastUpdate = Date.now();
+                                const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
+                                if(file) {
+                                    console.log(`File exists at "./etc/${domain}/${file}"`)
+                                    fs.rmSync(`./etc/${domain}/${file}`)
+                                }
+                            }
+                        }, 
+                        getLastPercent: () => lastPercent
                     };
-                };
-
-                if(returnInstantly) initialRun({percent: 1});
     
-                playback.on(json.nyxData.livestream ? `data` : `progress`, (progress) => {
-                    initialRun(progress && typeof progress.percent == `number` ? progress : {percent: 1})
-                    //console.log('processed ' + Math.round(progress.percent) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentKbps || `0`}kbps [${progress.timemark}]`);
-                    if(progress.percent && Math.round(progress.percent || 0) != lastPercent) {
-                        lastPercent = Math.round(progress.percent || 0)
-                        console.log(`processed ` + Math.round(progress.percent || 0) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentSpeed} speed -- ETA: ${progress.eta}`)
-                    }
-                });
+                    returnJson.process = playback;
+    
+                    processes[json.url] = returnJson;
+    
+                    const initialRun = (progress) => {
+                        const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
+    
+                        if(waitUntilComplete) {
+                            console.log(`requested to wait until complete! holding on to file for now...`)
+                        } else if(!sentBack && run == `exec` && Math.round(progress.percent || 0) != 0) {
+                            times.firstPipe = Date.now()
+                            sentBack = true;
+                            console.log(`returning file`)
+                            returnJson.location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`
+                            res2(returnJson)
+                        } else if(!sentBack && run == `execStream` && Math.round(progress.percent || 0) != 0) {
+                            times.firstPipe = Date.now()
+                            sentBack = true;
+                            console.log(`returning stream`)
+                            returnJson.stream = playback;
+                            res2(returnJson)
+                        }
+                
+                        if(global.streamCache[input] && global.streamCache[input].nyxData && progress.timemark) {
+                            global.streamCache[input].nyxData.downloadedLengthInMs = util.time(progress.timemark.split(`.`)[0]).units.ms
+                            global.streamCache[input].nyxData.lastUpdate = Date.now();
+                        };
+                    };
+    
+                    if(returnInstantly) initialRun({percent: 1});
         
-                playback.once(`close`, () => {
-                    ytdlCompleted = true;
+                    playback.on(json.nyxData.livestream ? `data` : `progress`, (progress) => {
+                        initialRun(progress && typeof progress.percent == `number` ? progress : {percent: 1})
+                        //console.log('processed ' + Math.round(progress.percent) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentKbps || `0`}kbps [${progress.timemark}]`);
+                        if(progress.percent && Math.round(progress.percent || 0) != lastPercent) {
+                            lastPercent = Math.round(progress.percent || 0)
+                            console.log(`processed ` + Math.round(progress.percent || 0) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentSpeed} speed -- ETA: ${progress.eta}`)
+                        }
+                    });
+            
+                    playback.once(`close`, () => {
+                        times.finish = Date.now();
 
-                    delete processes[json.url];
-
-                    const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
-
-                    if(fs.existsSync(`./etc/${jsonFileID}.json`)) fs.rmSync(`./etc/${jsonFileID}.json`)
-
-                    if(waitUntilComplete) {
-                        console.log(`returning file`)
-                        returnJson.location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`
-                        res(returnJson)
-                    } else if(!sentBack && file) {
-                        sentBack = true;
-                        console.log(`returning file`)
-                        returnJson.location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`
-                        res(returnJson)
-                    }
+                        ytdlCompleted = true;
     
-                    console.log(`successfully processed ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)}`);
+                        delete processes[json.url];
     
-                    fileLocation = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`;
+                        const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
     
-                    setTimeout(() => {
-                        if(fs.existsSync(fileLocation)) fs.unlinkSync(fileLocation)
-                        console.log(`deleted file ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)}.opus! (timed out)`)
-                    }, 1.26e+7) // 3.5 hours
-                });
+                        if(fs.existsSync(`./etc/${jsonFileID}.json`)) fs.rmSync(`./etc/${jsonFileID}.json`)
+    
+                        if(waitUntilComplete) {
+                            console.log(`returning file`)
+                            returnJson.location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`
+                            res2(returnJson)
+                        } else if(!sentBack && file) {
+                            sentBack = true;
+                            console.log(`returning file`)
+                            returnJson.location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`
+                            res2(returnJson)
+                        }
         
-                playback.on(`error`, (err, stdout, stderr) => {
-                    delete processes[json.url];
-                    console.error(`Failed to process ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)}: ${err}`, err);
-                    if(fs.existsSync(fileLocation)) fs.unlinkSync(fileLocation);
-                    delete global.streamCache[input];
-                    rej(`Unable to stream audio!\n- ${`${err}`.split(`:`).slice(5).join(`\n- `) || `(no internal error provided)`}`)
+                        console.log(`successfully processed ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)}`);
+        
+                        fileLocation = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${file}`;
+        
+                        setTimeout(() => {
+                            if(fs.existsSync(fileLocation)) fs.unlinkSync(fileLocation)
+                            console.log(`deleted file ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)}.opus! (timed out)`)
+                        }, 1.26e+7) // 3.5 hours
+                        
+                        logData(`yt-dlp`)
+                    });
+            
+                    playback.on(`error`, (err, stdout, stderr) => {
+                        delete processes[json.url];
+                        console.error(`Failed to process ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)}: ${err}`, err);
+                        if(fs.existsSync(fileLocation)) fs.unlinkSync(fileLocation);
+                        delete global.streamCache[input];
+                        rej2(`Unable to stream audio!\n- ${`${err}`.split(`:`).slice(5).join(`\n- `) || `(no internal error provided)`}`)
+                    });
                 });
+
+                const useFFmpeg = (formatOverride) => new Promise(async (res2, rej2) => {
+                    let headers = Object.entries(useFormat && useFormat.http_headers ? useFormat.http_headers : {}).map(o => `${o[0]}: ${o[1]}`);
+
+                    let format = {
+                        type: formatOverride || `opus`,
+                        from: formatOverride ? `override` : `default`
+                    };
+
+                    if(!formatOverride && ffmpegFormats.find(s => s == `${useFormat.acodec}`)) {
+                        format.type = ffmpegFormats.find(s => s == `${useFormat.acodec}`);
+                        format.from = `exact match of yt-dlp's acodec (${useFormat.acodec}) result`
+                    } else if(!formatOverride && ffmpegFormats.find(s => s.split(`,`).find(s2 => s2 == `${useFormat.acodec}`))) {
+                        format.type = `${useFormat.acodec}`
+                        format.from = `exact match of yt-dlp's acodec (${useFormat.acodec}) result, found by splitting ffmpeg group of codecs`
+                    } else if(!formatOverride && ffmpegFormats.find(s => s == `${useFormat.acodec}`.split(`.`)[0])) {
+                        format.type = `${useFormat.acodec}`.split(`.`)[0]
+                        format.from = `yt-dlp's acodec (${useFormat.acodec}) split by "."`
+                    } else if(!formatOverride && ffmpegFormats.find(s => s == useFormat.audio_ext)) {
+                        format.type = ffmpegFormats.find(s => s == useFormat.audio_ext);
+                        format.from = `exact match of yt-dlp's audio_ext (${useFormat.audio_ext}) result`
+                    } else if(!formatOverride && ffmpegFormats.find(s => s.split(`,`).find(s2 => s2 == useFormat.audio_ext))) {
+                        format.type = useFormat.audio_ext
+                        format.from = `exact match of yt-dlp's audio_ext (${useFormat.audio_ext}) result, found by splitting ffmpeg group of codecs`
+                    }
+
+                    console.log(`Using ffmpeg output format ${format.type} from ${format.from} (acodec: ${useFormat.acodec})`)
+
+                    let ffmpegArgs = [
+                        `-i`, useFormat ? useFormat.url : input,
+                        //...(args.find(s => s.startsWith(`ffmpeg:`)) ? args.find(s => s.startsWith(`ffmpeg:`)).replace(`ffmpeg:`, ``).trim().split(` `) : []),
+                        //...(startTimeArg ? [`-ss`, `${startTimeArg}`] : []),
+                        //...(formatOverride ? [] : [`-codec:a`, `copy`]),
+                        `-ar`, `48000`,
+                        //...(useFormat.abr ? [`-b:a`, `${useFormat.abr}k`] : []),
+                        `-vn`,
+                        `-f`, format.type, 
+                        `-`,
+                    ];
+
+                    headers.forEach(h => ffmpegArgs.unshift(`-headers`, h));
+
+                    console.log(`-----------------------\nEXECUTING FFMPEG WITH ARGS: ` + ffmpegArgs.map(s => s.includes(` `) ? `"${s}"` : s).join(` `) + `\n-----------------------`)
+
+                    let f = require('child_process').spawn(`ffmpeg`, ffmpegArgs);
+
+                    const returnJson = {
+                        domain, 
+                        id, 
+                        json,
+                        location: null, 
+                        stream: null,
+                        seeked: seeking,
+                        abort: () => {
+                            if(f) {
+                                console.log(`Abort signal received!`);
+                                delete processes[json.url];
+                                f.kill();
+                                f = null;
+
+                                const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
+                                if(file) {
+                                    console.log(`File exists at "./etc/${domain}/${file}"`)
+                                    fs.rmSync(`./etc/${domain}/${file}`)
+                                }
+                            }
+                        }, 
+                        getLastPercent: () => lastPercent
+                    };
+
+                    processes[json.url] = returnJson
+
+                    let sent = false;
+
+                    let stderr = ``;
+
+                    let sendBack = (closed) => {
+                        if(!sent && ((waitUntilComplete && closed) || !waitUntilComplete)) {
+                            times.firstPipe = Date.now()
+                            console.log(`Sent back JSON`)
+                            //console.log(`Readable now, here's stderr:`, stderr);
+                            stderr = null;
+                            sent = true;
+                            return res2(returnJson)
+                        }
+                    };
+
+                    f.once(`close`, () => {
+                        f = null;
+                        times.finish = Date.now();
+                        sendBack(true)
+                        logData(`FFmpeg`)
+                    })
+
+                    let t = 0;
+
+                    if(args.indexOf(`-o`) == -1) {
+                        returnJson.stream = new (require('stream')).PassThrough();
+
+                        f.stdout.on(`data`, d => {
+                            t++;
+                            returnJson.stream.push(d);
+                            if(t >= 2) sendBack();
+                        })
+                    } else {
+                        let dir = args.indexOf(`-P`) == -1 ? args[args.indexOf(`-P`)+1] : `./etc/${domain}`
+                        returnJson.location = dir + `/` + json.id + `.` + useFormat.audio_ext || `ogg`;
+                        
+                        let write = fs.createWriteStream(returnJson.location, {
+                            flags: `w`
+                        });
+                        
+                        f.stdout.on(`data`, d => {
+                            t++;
+                            write.write(d)
+                            if(t >= 2) sendBack();
+                        });
+
+                        f.on(`close`, (code, signal) => {
+                            console.log(`download ffmpeg closed with code ${code} / sig ${signal}`);
+                            write.end();
+                        })
+                    }
+
+                    if(returnInstantly) sendBack();
+
+                    f.stderr.on(`data`, d => {
+                        //console.log(d.toString().trim())
+
+                        if((d.toString().trim().includes(`Invalid argument`) || d.toString().trim().includes(`Invalid data found`) || d.toString().trim().includes(`Unsupported codec id`)) && format.from != `override`) {
+                            useFFmpeg(`opus`).then(res2).catch(rej2)
+                        } else if(d.toString().trim().includes(`Error`)) {
+                            returnJson.abort();
+                            rej2(d.toString().trim())
+                        } else {
+                            if(typeof stderr == `string`) stderr += `\n${d.toString().trim()}`
+                            //if(!stream.readable) stderr += `\n` + d.toString().trim();
+                        }
+                    })
+                });
+
+                let returned = false;
+
+                useFFmpeg().then(r => {
+                    if(!returned && r && typeof r == `object`) {
+                        returned = true;
+                        res(r)
+                    }
+                }).catch(e => {
+                    console.warn(`FFmpeg failed: ${e}`)
+                    if(!returned) useYtdlp().then(r => {
+                        if(!returned && r && typeof r == `object`) {
+                            returned = true;
+                            res(r)
+                        }
+                    }).catch(rej)
+                })
             } catch(e) {rej(e)}
         }
 
