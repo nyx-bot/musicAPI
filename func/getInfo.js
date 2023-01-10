@@ -95,17 +95,15 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
                         height: 1024,
                     };
     
-                    if(input.extractor != `generic`) {
-                        global.streamCache[link] = obj;
-                        global.streamCache[origLink] = obj;
-    
-                        ctx.cacheLocation(link, origLink)
-            
-                        setTimeout(() => {
-                            delete global.streamCache[link];
-                            delete global.streamCache[origLink];
-                        }, 4.32e+7);
-                    }
+                    global.streamCache[link] = obj;
+                    global.streamCache[origLink] = obj;
+
+                    ctx.cacheLocation(link, origLink)
+        
+                    setTimeout(() => {
+                        delete global.streamCache[link];
+                        delete global.streamCache[origLink];
+                    }, 4.32e+7);
     
                     if(input && noDownload != true && input.entries[0] && !input.entries[0].nyxData.livestream && input.extractor != `generic`) {
                         console.log(`Downloading on getInfo request enabled!`);
@@ -147,17 +145,15 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
     
                 json.url = link;
     
-                if(input.extractor != `generic`) {
-                    global.streamCache[link] = json;
-                    global.streamCache[origLink] = json;
+                global.streamCache[link] = json;
+                global.streamCache[origLink] = json;
 
-                    ctx.cacheLocation(link, origLink)
-        
-                    setTimeout(() => {
-                        delete global.streamCache[link];
-                        delete global.streamCache[origLink];
-                    }, 4.32e+7);
-                }
+                ctx.cacheLocation(link, origLink)
+    
+                setTimeout(() => {
+                    delete global.streamCache[link];
+                    delete global.streamCache[origLink];
+                }, 4.32e+7);
     
                 if(input && noDownload != true && !json.nyxData.livestream && input.extractor != `generic`) {
                     console.log(`Downloading on getInfo request enabled!`);
