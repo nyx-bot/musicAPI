@@ -186,7 +186,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
 
                 if(format_id) args.push(`--format`, `${format_id}`);
     
-                if(json.nyxData.livestream) {
+                if(json.nyxData.livestream || startTimeArg) {
                     //if(args.indexOf(`--format`) !== -1) args.splice(args.indexOf(`--format`), 2)
                     if(args.indexOf(`-o`) !== -1) args.splice(args.indexOf(`-o`), 2);
                     if(args.indexOf(`-P`) !== -1) args.splice(args.indexOf(`-P`), 2);
@@ -318,6 +318,9 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
                 });
 
                 const useFFmpeg = (formatOverride) => new Promise(async (res2, rej2) => {
+                    let dir = args.indexOf(`-P`) == -1 ? args[args.indexOf(`-P`)+1] : `./etc/${domain}`
+                    let location = dir + `/` + json.id + `.` + useFormat.audio_ext || `ogg`
+
                     let headers = Object.entries(useFormat && useFormat.http_headers ? useFormat.http_headers : {}).map(o => `${o[0]}: ${o[1]}`);
 
                     let format = {
@@ -347,7 +350,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
                     let ffmpegArgs = [
                         `-i`, useFormat ? useFormat.url : input,
                         //...(args.find(s => s.startsWith(`ffmpeg:`)) ? args.find(s => s.startsWith(`ffmpeg:`)).replace(`ffmpeg:`, ``).trim().split(` `) : []),
-                        //...(startTimeArg ? [`-ss`, `${startTimeArg}`] : []),
+                        ...(startTimeArg ? [`-ss`, `${startTimeArg}`] : []),
                         //...(formatOverride ? [] : [`-codec:a`, `copy`]),
                         `-ar`, `48000`,
                         //...(useFormat.abr ? [`-b:a`, `${useFormat.abr}k`] : []),
@@ -368,7 +371,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
                         json,
                         location: null, 
                         stream: null,
-                        seeked: seeking,
+                        seeked: startTimeArg ? true : false,
                         abort: () => {
                             if(f) {
                                 console.log(`Abort signal received!`);
@@ -412,7 +415,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
 
                     let t = 0;
 
-                    if(args.indexOf(`-o`) == -1) {
+                    if(args.indexOf(`-o`) == -1 || (!fs.existsSync(location) && startTimeArg)) {
                         returnJson.stream = new (require('stream')).PassThrough();
 
                         f.stdout.on(`data`, d => {
@@ -420,10 +423,9 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
                             returnJson.stream.push(d);
                             if(t >= 2) sendBack();
                         })
-                    } else {
-                        let dir = args.indexOf(`-P`) == -1 ? args[args.indexOf(`-P`)+1] : `./etc/${domain}`
-                        returnJson.location = dir + `/` + json.id + `.` + useFormat.audio_ext || `ogg`;
-                        
+                    } else {                        
+                        returnJson.location = location
+
                         let write = fs.createWriteStream(returnJson.location, {
                             flags: `w`
                         });
