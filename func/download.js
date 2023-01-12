@@ -344,21 +344,26 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     } else if(!formatOverride && ffmpegFormats.find(s => s.split(`,`).find(s2 => s2 == useFormat.audio_ext))) {
                         format.type = useFormat.audio_ext
                         format.from = `exact match of yt-dlp's audio_ext (${useFormat.audio_ext}) result, found by splitting ffmpeg group of codecs`
-                    }
+                    };
+
+                    let headersArr = [];
+                    headers.forEach(h => headersArr.unshift(`-headers`, h));
+
+                    if(!useFormat.abr) useFormat.abr = 384;
+                    if(!json.abr) json.abr = useFormat.abr;
 
                     console.log(`Using ffmpeg output format ${format.type} from ${format.from} (acodec: ${useFormat.acodec})`)
 
                     let ffmpegArgs = [
+                        ...headersArr,
                         `-i`, useFormat ? useFormat.url : input,
                         //...(args.find(s => s.startsWith(`ffmpeg:`)) ? args.find(s => s.startsWith(`ffmpeg:`)).replace(`ffmpeg:`, ``).trim().split(` `) : []),
                         ...(startTimeArg ? [`-ss`, `${startTimeArg}`] : []),
                         //...(formatOverride ? [] : [`-codec:a`, `copy`]),
                         `-ar`, `48000`,
-                        ...(useFormat.abr ? [`-b:a`, `${useFormat.abr}k`] : [`-b:a`, `384k`]),
+                        ...(json.abr ? [`-b:a`, `${json.abr}k`] : [`-b:a`, `384k`]),
                         `-vn`,
                     ];
-
-                    headers.forEach(h => ffmpegArgs.unshift(`-headers`, h));
 
                     const streaming = args.indexOf(`-o`) == -1 || (!fs.existsSync(location) && startTimeArg) ? true : false
 
