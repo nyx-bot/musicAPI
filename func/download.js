@@ -10,7 +10,7 @@ let processes = {};
 
 const ffmpegFormats = require('child_process').execSync(`ffmpeg -formats`).toString().split(`\n`).map(s => s.trim().slice(4).split(` `)[0]).filter(s => s.length > 0 ? true : false);
 
-module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek}) => new Promise(async (res, rej) => {
+module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, forceYtdlp}) => new Promise(async (res, rej) => {
     const times = {
         start: Date.now(),
         firstPipe: Date.now(),
@@ -461,7 +461,14 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek})
 
                 let returned = false;
 
-                useFFmpeg().then(r => {
+                if(forceYtdlp) {
+                    useYtdlp().then(r => {
+                        if(!returned && r && typeof r == `object`) {
+                            returned = true;
+                            res(r)
+                        }
+                    }).catch(rej)
+                } else useFFmpeg().then(r => {
                     if(!returned && r && typeof r == `object`) {
                         returned = true;
                         res(r)

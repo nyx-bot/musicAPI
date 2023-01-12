@@ -112,6 +112,7 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
                             keys,
                             waitUntilComplete: false,
                             returnInstantly: true,
+                            forceYtdlp: true,
                         })
                     }
     
@@ -162,6 +163,7 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
                         keys,
                         waitUntilComplete: false,
                         returnInstantly: true,
+                        forceYtdlp: true,
                     })
                 }
     
