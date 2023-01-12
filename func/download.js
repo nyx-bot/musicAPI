@@ -363,7 +363,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                     if(streaming) {
                         console.log(`STREAMING OUTPUT`)
-                        ffmpegArgs.push(`-f`, format.type, `-`)
+                        ffmpegArgs.push(`-f`, `adts`, `-`)
                     } else {
                         console.log(`DOWNLOADING VIA FFMPEG TO ${location}`)
                         ffmpegArgs.push(`-c:a`, `copy`, location)
