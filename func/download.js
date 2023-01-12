@@ -355,11 +355,19 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         `-ar`, `48000`,
                         //...(useFormat.abr ? [`-b:a`, `${useFormat.abr}k`] : []),
                         `-vn`,
-                        `-f`, format.type, 
-                        `-`,
                     ];
 
                     headers.forEach(h => ffmpegArgs.unshift(`-headers`, h));
+
+                    const streaming = args.indexOf(`-o`) == -1 || (!fs.existsSync(location) && startTimeArg) ? true : false
+
+                    if(streaming) {
+                        console.log(`STREAMING OUTPUT`)
+                        ffmpegArgs.push(`-f`, format.type, `-`)
+                    } else {
+                        console.log(`DOWNLOADING VIA FFMPEG TO ${location}`)
+                        ffmpegArgs.push(`-c:a`, `copy`, location)
+                    }
 
                     console.log(`-----------------------\nEXECUTING FFMPEG WITH ARGS: ` + ffmpegArgs.map(s => s.includes(` `) ? `"${s}"` : s).join(` `) + `\n-----------------------`)
 
@@ -393,13 +401,14 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                     let sent = false;
 
-                    let stderr = ``;
+                    let stderr = ``, stderrCache;
 
                     let sendBack = (closed) => {
                         if(!sent && ((waitUntilComplete && closed) || !waitUntilComplete)) {
                             times.firstPipe = Date.now()
                             console.log(`Sent back JSON`)
                             //console.log(`Readable now, here's stderr:`, stderr);
+                            stderrCache = stderr;
                             stderr = null;
                             sent = true;
                             return res2(returnJson)
@@ -415,7 +424,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                     let t = 0;
 
-                    if(args.indexOf(`-o`) == -1 || (!fs.existsSync(location) && startTimeArg)) {
+                    if(streaming) {
                         returnJson.stream = new (require('stream')).PassThrough();
 
                         f.stdout.on(`data`, d => {
@@ -426,19 +435,23 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     } else {                        
                         returnJson.location = location
 
-                        let write = fs.createWriteStream(returnJson.location, {
-                            flags: `w`
-                        });
-                        
-                        f.stdout.on(`data`, d => {
-                            t++;
-                            write.write(d)
-                            if(t >= 2) sendBack();
-                        });
-
                         f.on(`close`, (code, signal) => {
                             console.log(`download ffmpeg closed with code ${code} / sig ${signal}`);
-                            write.end();
+                            if(code == 1 && stderrCache) {
+                                console.log(stderrCache)
+                            }
+                        });
+
+                        let t = 0;
+
+                        f.stderr.on(`data`, d => {
+                            let log = d.toString().trim()
+                            if(log.includes(`time=`) && log.includes(`speed=`)) {
+                                if(t == 0) times.firstPipe = Date.now();
+                                t++;
+                                console.log(`FFMPEG DOWNLOAD | ` + `size=` + log.split(`size=`)[1]);
+                                if(t >= 2) sendBack();
+                            }
                         })
                     }
 
