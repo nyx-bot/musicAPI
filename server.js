@@ -38,7 +38,20 @@ const update = () => new Promise((res, rej) => {
                         console.warn(`Unable to pull files!`, err); res()
                     } else if(!`${out}`.toLowerCase().includes(`already up to date`)) {
                         console.log(`Updates were made; successfully pulled files -- rebuilding node_modules!`);
-                        cp.exec(`npm i`, (e, out, stderr) => {
+
+                        let update = false;
+
+                        let main = process.argv.indexOf(`main`) !== -1 ? true : false
+
+                        if(`${out}`.includes(`server.js`) || `${out}`.includes(`package.json`)) {
+                            update = true
+                        } else if(main && `${out}`.includes(`main.js`)) {
+                            update = true
+                        } else if(!main && (`${out}`.includes(`func/`) || `${out}`.includes(`lib/`) || `${out}`.includes(`util.js`) || `${out}`.includes(`getKeys.js`) || `${out}`.includes(`core.js`))) {
+                            update = true
+                        }
+
+                        if(update) cp.exec(`npm i`, (e, out, stderr) => {
                             if(!err) {
                                 console.log(`Successfully rebuilt node_modules! Restarting...`);
                                 process.exit(0);
