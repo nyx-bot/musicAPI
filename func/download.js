@@ -476,7 +476,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                 let returned = false;
 
-                if(forceYtdlp) {
+                if(forceYtdlp || json.nyxData.livestream) {
                     useYtdlp().then(r => {
                         if(!returned && r && typeof r == `object`) {
                             returned = true;
