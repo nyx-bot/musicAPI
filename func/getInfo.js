@@ -23,7 +23,7 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
         } else {
             if(input.direct) {
                 console.log(`This is a direct download link, calling ffprobe for ${input.url}...`);
-    
+                
                 try {
                     const info = await ffprobe(input.url);
     
@@ -32,9 +32,14 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
                     input.uploader = `${serviceName[0].toUpperCase() + serviceName.slice(1)}`;
                     input.uploader_url = link;
     
-                    if(info.format && info.format.duration) input.duration = Math.round(info.format.duration)
+                    if(info.format && info.format.duration) input.duration = Math.round(info.format.duration);
+
+                    if(info.format && info.format.bit_rate && Number(info.format.bit_rate) > 0) {
+                        input.abr = Number(info.format.bit_rate)/1000;
+                        if(input.formats && input.formats.length > 0) input.formats = input.formats.map(o => o.abr = Number(info.format.bit_rate)/1000)
+                    }
                 } catch(e) {
-                    console.warn(`Failed to get ffprobe info: ${e}`, e)
+                    console.warn(`Failed to get ffprobe info: ${e}`, e);
                 }
             };
     
