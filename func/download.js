@@ -237,7 +237,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
     
                     returnJson.process = playback;
     
-                    processes[json.url] = returnJson;
+                    if(!json.nyxData.livestream) processes[json.url] = returnJson;
     
                     const initialRun = (progress) => {
                         const file = fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id));
@@ -404,7 +404,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         getLastPercent: () => lastPercent
                     };
 
-                    processes[json.url] = returnJson
+                    if(!json.nyxData.livestream) processes[json.url] = returnJson
 
                     let sent = false;
 
