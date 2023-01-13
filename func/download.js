@@ -88,36 +88,8 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
         const process = () => {
             try {
                 console.log(`This ${json.nyxData.livestream ? `is` : `is NOT`} a livestream!`)
-                let audioBitrates = json.formats.filter(o => {
-                    return !isNaN(o.abr) && o.abr > 1 && (o.asr || 0) <= 49000
-                }).sort((a,b) => {
-                    const abitrate = a.abr * (a.asr || 1), bbitrate = b.abr * (b.asr || 1);
-                    console.log(`A-ABR: ${a.abr} / ${a.asr || 1} / ${abitrate} | B-ABR: ${b.abr} / ${b.asr || 1} / ${bbitrate}`)
-                    if(abitrate > bbitrate) {
-                        return -1
-                    } else if(abitrate < bbitrate) {
-                        return 1
-                    } else return 0
-                }), bestAudio = audioBitrates[0];
 
-                if(!bestAudio) {
-                    if(json.formats.length > 0) {
-                        //return rej(`Unable to stream audio! (There are no audio streams available!)`)
-                        console.warn(`THERE ARE NO DIRECT AUDIO STREAMS AVAILABLE -- trying highest quality...`);
-
-                        audioBitrates = json.formats.sort((a,b) => {
-                            const abitrate = a.tbr, bbitrate = b.tbr;
-                            console.log(`A-TBR: ${abitrate} | B-TBR: ${bbitrate}`)
-                            if(abitrate > bbitrate) {
-                                return -1
-                            } else if(abitrate < bbitrate) {
-                                return 1
-                            } else return 0
-                        }); bestAudio = audioBitrates[0]
-                    }/* else {
-                        return rej(`Unable to stream audio! (This source is not allowing me to play anything!)`)
-                    }*/
-                };
+                const { useFormat, downloaderArgs, format_id } = require(`../util`).findBestAudioQuality(json)
 
                 let args = [
                     //`--no-keep-video`,
@@ -128,63 +100,15 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     `--no-part`,
                     `--cache-dir`, `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/yt-dlp-cache`,
                     //`--extractor-args`, `youtube:skip=dash,hls`
-                ], format_id = null;
+                    ...downloaderArgs
+                ];
 
-                let seeking = false;
+                let seeking = downloaderArgs.find(s => s.includes(`-ss`)) ? true : false;
 
-                if(fs.existsSync(`./etc/${jsonFileID}.json`)) {
-                    args.push(`--load-info-json`, `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${jsonFileID}.json`)
-                } else args.push(json.url)
-
-                if(bestAudio) console.log(`best audio bitrate: ${bestAudio.abr} with sampling rate of ${bestAudio.asr}`);
-    
-                //const bestAudioWithoutVideo = audioBitrates.filter(o => typeof o.vbr != `number`)[0];
-                const bestAudioWithoutVideo = []
-
-                if(bestAudioWithoutVideo) console.log(`best audio bitrate (without video): ${bestAudioWithoutVideo.abr} with sampling rate of ${bestAudioWithoutVideo.asr}`);
-                
-                if(bestAudio && bestAudioWithoutVideo && bestAudio.abr && bestAudio.abr == bestAudioWithoutVideo.abr && bestAudio.asr == bestAudioWithoutVideo.asr) {
-                    console.log(`bestAudio is equivalent to bestAudioWithoutVideo, using without video!`);
-                    format_id = bestAudioWithoutVideo.format_id
-                } else {
-                    if(bestAudio && bestAudioWithoutVideo) console.log(`bestAudio is NOT equivalent to bestAudioWithoutVideo (${bestAudio.abr} / ${bestAudio.asr} > ${bestAudioWithoutVideo.abr} / ${bestAudioWithoutVideo.asr})`);
-                    
-                    let difference = bestAudio && bestAudio.abr ? bestAudio.abr * (bestAudio.asr || 1) - (bestAudioWithoutVideo || {abr : 0}).abr * ((bestAudioWithoutVideo || {asr: 0}).asr || 1) : -11000;
-
-                    if(difference < 10000 && difference > -10000) {
-                        console.log(`difference is less than 10kbps off, using audio anyways! (${`${difference}`.replace(`-`, ``)})\n| FORMAT: ${bestAudioWithoutVideo.format_id}`);
-                        format_id = bestAudioWithoutVideo.format_id
-                    } else {
-                        console.log(`difference is too high! (${`${difference}`.replace(`-`, ``)}) -- using video and extracting audio\n| FORMAT: ${bestAudio && bestAudio.format_id ? bestAudio.format_id : `NONE, YT-DLP IS ON ITS OWN THIS TIME`}`)
-                        if(bestAudio && bestAudio.format_id) {
-                            format_id = bestAudio.format_id
-                            args.push(`--no-keep-video`);
-
-                            if(startTimeArg) {
-                                args.push(`--downloader`, `ffmpeg`, `--downloader-args`, `ffmpeg:-ss ${startTimeArg}`);
-                            }
-                        } else {
-                            args.push(`--downloader`, `ffmpeg`);
-
-                            let ffmpegArgs = `-acodec copy -vn`;
-
-                            if(startTimeArg) {
-                                ffmpegArgs = ffmpegArgs + ` -ss ${startTimeArg}`;
-                                seeking = true;
-                            }
-
-                            args.push(`--downloader-args`, `ffmpeg:${ffmpegArgs}`)
-                            //args.push(`--compat-options`, `multistreams`)
-                            //args.push(`--dump-single-json`, `--no-simulate`)
-                        }
-                    }
-                };
-
-                let useFormat = json.formats.find(o => o.format_id == format_id);
-
-                console.log(`Using format ${format_id}, corresponding to format obj:`, useFormat, useFormat ? useFormat.http_headers : {})
-
-                if(format_id) args.push(`--format`, `${format_id}`);
+                if(format_id) {
+                    args.push(`--format`, `${format_id}`);
+                    console.log(`Using format ${format_id}, corresponding to format obj:`, useFormat)
+                }
     
                 if(json.nyxData.livestream || startTimeArg) {
                     //if(args.indexOf(`--format`) !== -1) args.splice(args.indexOf(`--format`), 2)
@@ -319,10 +243,10 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                 });
 
                 const useFFmpeg = (formatOverride) => new Promise(async (res2, rej2) => {
-                    let dir = args.indexOf(`-P`) == -1 ? args[args.indexOf(`-P`)+1] : `./etc/${domain}`
-                    let location = dir + `/` + json.id + `.` + useFormat.audio_ext || `ogg`
+                    let dir = args.indexOf(`-P`) == -1 ? args[args.indexOf(`-P`)+1] : __dirname.split(`/func`)[0] + `/etc/${domain}`
+                    let location = dir + `/` + json.id + `.` + (useFormat && useFormat.audio_ext ? useFormat.audio_ext : `ogg`)
 
-                    let headers = Object.entries(useFormat && useFormat.http_headers ? useFormat.http_headers : {}).map(o => `${o[0]}: ${o[1]}`);
+                    let headers = Object.entries(useFormat && useFormat.http_headers ? useFormat.http_headers : json && json.http_headers ? json.http_headers : {}).map(o => `${o[0]}: ${o[1]}`);
 
                     let format = {
                         type: formatOverride || `opus`,
@@ -349,6 +273,8 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     let headersArr = [];
                     headers.forEach(h => headersArr.unshift(`-headers`, h));
 
+                    if(json.abr && !useFormat.abr) useFormat.abr = json.abr;
+                    
                     if(!useFormat.abr) useFormat.abr = 384;
                     if(!json.abr) json.abr = useFormat.abr;
 
@@ -356,13 +282,14 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                     let ffmpegArgs = [
                         ...headersArr,
-                        `-i`, useFormat ? useFormat.url : input,
+                        `-i`, useFormat && useFormat.url ? useFormat.url : json && json.url ? json.url : input,
                         //...(args.find(s => s.startsWith(`ffmpeg:`)) ? args.find(s => s.startsWith(`ffmpeg:`)).replace(`ffmpeg:`, ``).trim().split(` `) : []),
                         ...(startTimeArg ? [`-ss`, `${startTimeArg}`] : []),
                         //...(formatOverride ? [] : [`-codec:a`, `copy`]),
                         `-ar`, `48000`,
-                        ...(json.abr ? [`-b:a`, `${json.abr}k`] : [`-b:a`, `384k`]),
+                        ...(json.streamAbr ? [`-b:a`, `${json.streamAbr}k`] : json.abr ? [`-b:a`, `${json.abr > 400 ? 384 : json.abr}k`] : [`-b:a`, `384k`]),
                         `-vn`,
+                        `-y`
                     ];
 
                     const streaming = args.indexOf(`-o`) == -1 || (!fs.existsSync(location) && startTimeArg) ? true : false
@@ -372,7 +299,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         ffmpegArgs.push(`-f`, `adts`, `-`)
                     } else {
                         console.log(`DOWNLOADING VIA FFMPEG TO ${location}`)
-                        ffmpegArgs.push(`-c:a`, `copy`, location)
+                        ffmpegArgs.push(...(formatOverride ? [`-f`, `opus`] : [`-c:a`, `copy`]), location)
                     }
 
                     console.log(`-----------------------\nEXECUTING FFMPEG WITH ARGS: ` + ffmpegArgs.map(s => s.includes(` `) ? `"${s}"` : s).join(` `) + `\n-----------------------`)
@@ -432,11 +359,10 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     let t = 0;
 
                     if(streaming) {
-                        returnJson.stream = new (require('stream')).PassThrough();
+                        returnJson.stream = returnJson.stdout
 
                         f.stdout.on(`data`, d => {
                             t++;
-                            returnJson.stream.push(d);
                             if(t >= 2) sendBack();
                         })
                     } else {                        
