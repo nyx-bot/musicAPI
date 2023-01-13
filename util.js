@@ -4,6 +4,155 @@ const ffprobePath = require('child_process').execSync(`which ffprobe`).toString(
 
 console.log(`Using ffprobe path: "${ffprobePath}"`)
 
+util.findBestAudioQuality = (json) => {
+     let format_id, downloaderArgs = [];
+
+     let audioBitrates = json.formats.filter(o => {
+         return !isNaN(o.abr) && o.abr > 1 && (o.asr || 0) <= 49000
+     }).sort((a,b) => {
+         const abitrate = a.abr * (a.asr || 1), bbitrate = b.abr * (b.asr || 1);
+         console.log(`A-ABR: ${a.abr} / ${a.asr || 1} / ${abitrate} | B-ABR: ${b.abr} / ${b.asr || 1} / ${bbitrate}`)
+         if(abitrate > bbitrate) {
+             return -1
+         } else if(abitrate < bbitrate) {
+             return 1
+         } else return 0
+     }), bestAudio = audioBitrates[0];
+
+     if(!bestAudio) {
+         if(json.formats.length > 0) {
+             //return rej(`Unable to stream audio! (There are no audio streams available!)`)
+             console.warn(`THERE ARE NO DIRECT AUDIO STREAMS AVAILABLE -- trying highest quality...`);
+
+             audioBitrates = json.formats.sort((a,b) => {
+                 const abitrate = a.tbr, bbitrate = b.tbr;
+                 console.log(`A-TBR: ${abitrate} | B-TBR: ${bbitrate}`)
+                 if(abitrate > bbitrate) {
+                     return -1
+                 } else if(abitrate < bbitrate) {
+                     return 1
+                 } else return 0
+             }); bestAudio = audioBitrates[0]
+         }/* else {
+             return rej(`Unable to stream audio! (This source is not allowing me to play anything!)`)
+         }*/
+     };
+
+     const bestAudioWithoutVideo = audioBitrates.filter(o => typeof o.vbr != `number`)[0];
+
+     if(bestAudio) console.log(`best audio bitrate: ${bestAudio.abr} with sampling rate of ${bestAudio.asr}`);
+
+     if(bestAudioWithoutVideo) console.log(`best audio bitrate (without video): ${bestAudioWithoutVideo.abr} with sampling rate of ${bestAudioWithoutVideo.asr}`);
+
+     if(bestAudio && bestAudioWithoutVideo && bestAudio.abr && bestAudio.abr == bestAudioWithoutVideo.abr && bestAudio.asr == bestAudioWithoutVideo.asr) {
+         console.log(`bestAudio is equivalent to bestAudioWithoutVideo, using without video!`);
+         format_id = bestAudioWithoutVideo.format_id
+     } else {
+         if(bestAudio && bestAudioWithoutVideo) console.log(`bestAudio is NOT equivalent to bestAudioWithoutVideo (${bestAudio.abr} / ${bestAudio.asr} > ${bestAudioWithoutVideo.abr} / ${bestAudioWithoutVideo.asr})`);
+         
+         let difference = bestAudio && bestAudio.abr ? bestAudio.abr * (bestAudio.asr || 1) - (bestAudioWithoutVideo || {abr : 0}).abr * ((bestAudioWithoutVideo || {asr: 0}).asr || 1) : -11000;
+
+         if(difference < 10000 && difference > -10000) {
+             console.log(`difference is less than 10kbps off, using audio anyways! (${`${difference}`.replace(`-`, ``)})\n| FORMAT: ${bestAudioWithoutVideo.format_id}`);
+             format_id = bestAudioWithoutVideo.format_id
+         } else {
+             console.log(`difference is too high! (${`${difference}`.replace(`-`, ``)}) -- using video and extracting audio\n| FORMAT: ${bestAudio && bestAudio.format_id ? bestAudio.format_id : `NONE, YT-DLP IS ON ITS OWN THIS TIME`}`)
+             if(bestAudio && bestAudio.format_id) {
+                 format_id = bestAudio.format_id
+                 downloaderArgs.push(`--no-keep-video`);
+
+                 /*if(startTimeArg) {
+                     downloaderArgs.push(`--downloader`, `ffmpeg`, `--downloader-args`, `ffmpeg:-ss ${startTimeArg}`);
+                 }*/
+             } else {
+                 downloaderArgs.push(`--downloader`, `ffmpeg`);
+
+                 let ffmpegArgs = `-vn`;
+
+                 /*if(startTimeArg) {
+                     ffmpegArgs = ffmpegArgs + ` -ss ${startTimeArg}`;
+                     seeking = true;
+                 }*/
+
+                 downloaderArgs.push(`--downloader-args`, `ffmpeg:${ffmpegArgs}`)
+                 //downloaderArgs.push(`--compat-options`, `multistreams`)
+                 //downloaderArgs.push(`--dump-single-json`, `--no-simulate`)
+             }
+         }
+     };
+
+     const useFormat = json.formats.find(o => o.format_id == format_id);
+
+     if(useFormat && useFormat.abr && !json.abr) {
+          json.abr = useFormat.abr
+     };
+
+     json.streamAbr = (Number(json.abr) || 384) > 384 ? 384 : (json.abr || 384);
+
+     return {
+          useFormat,
+          format_id,
+          downloaderArgs
+     }
+}
+
+util.getAudioData = (location, headers, noCodecCopy) => new Promise(async res => {
+     let data = {
+          bitrate: null
+     };
+
+     let headersArr = []; Object.entries(typeof headers == `object` ? headers : {}).map(o => `${o[0]}: ${o[1]}`).forEach(h => headersArr.unshift(`-headers`, h));
+
+     const query = require('child_process').spawn(`ffmpeg`, [...headersArr, `-i`, location, ...(noCodecCopy ? [] : [`-c:a`, `copy`]), `-f`, `opus`, `/dev/null`, `-y`, `-hide_banner`]);
+
+     query.on(`error`, e => {
+          console.warn(`Unable to use ffmpeg to determine audio quality of file! (${e}) / 2`);
+          res(data)
+     });
+
+     let timer = null;
+
+     let bitrates = [];
+
+     let stderr = ``;
+
+     query.stderr.on(`data`, d => {
+          const log = d.toString().trim();
+
+          stderr += `\n` + log
+
+          let createTimer = () => {
+               if(!timer) {
+                    timer = setTimeout(() => query.kill(), 2500);
+                    console.log(`ffmpeg query (${location}) -- got first bitrate thing! created timer to end this thing`)
+               };
+          }
+
+          if(log.includes(`bitrate=`) && !log.split(`bitrate=`)[1].trim().startsWith(`N/A`)) {
+               createTimer();
+               const n = Number(log.split(`bitrate=`)[1].split(`kbit`)[0].trim())
+               bitrates.push(n);
+               console.log(`Bitrate update (${location}): ${n}`)
+          };
+     })
+
+     query.on(`close`, (code, sig) => {
+          console.log(`ffmpeg query for song ${location} ended with code ${code} / signal ${sig}`);
+
+          if(code > 0) {
+               if(stderr.includes(`incorrect codec parameters`)) {
+                    return util.getAudioData(location, headers, true).then(res)
+               } else console.log(`ffmpeg output since code was greater than 0:`, stderr)
+          }
+
+          data.bitrate = Math.round(bitrates.reduce((a,b) => a+b, 0)/bitrates.length);
+
+          console.log(`Average bitrate of ${location}: ${data.bitrate}kbps`);
+
+          res(data);
+     })
+})
+
 util.ffprobe = (path) => require('ffprobe-client')(path, {
      path: ffprobePath
 })
