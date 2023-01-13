@@ -313,6 +313,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         useFormat,
                         location: null, 
                         stream: null,
+                        proc: f,
                         seeked: startTimeArg ? true : false,
                         abort: () => {
                             if(f) {
@@ -352,6 +353,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     f.once(`close`, () => {
                         f = null;
                         times.finish = Date.now();
+                        if(returnJson.stream) returnJson.stream.end()
                         sendBack(true)
                         logData(`FFmpeg`)
                     })
@@ -359,9 +361,9 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     let t = 0;
 
                     if(streaming) {
-                        returnJson.stream = new (require('stream')).PassThrough()
+                        returnJson.stream = f.stdout
 
-                        f.stdout.on(`data`, d => {
+                        f.stderr.on(`data`, d => {
                             t++;
                             returnJson.stream.write(d)
                             if(t >= 2) sendBack();
@@ -375,8 +377,6 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                                 console.log(stderrCache)
                             }
                         });
-
-                        let t = 0;
 
                         f.stderr.on(`data`, d => {
                             let log = d.toString().trim()
