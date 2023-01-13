@@ -229,7 +229,7 @@ module.exports = async ({app, auth}) => {
         return location;
     }
 
-    const run = (req, res, specifiedUrl) => new Promise(async (resp, rej) => {
+    const run = (req, res, specifiedUrl, seek, ffmpegProc) => new Promise(async (resp, rej) => {
         const started = Date.now();
 
         const cachedLocation = getCachedLocation(req, endpoints.find(s => s == req.originalUrl.split(`/`)[1]));
@@ -242,7 +242,16 @@ module.exports = async ({app, auth}) => {
 
         console.log(`Requesting to ${cachedLocation ? `${cachedLocation} [cached response]` : `${url} [non-cached randomized server]`}`)
 
-        const requestTo = (cachedLocation || url) + req.originalUrl/* + (req.originalUrl.includes(`?`) ? `&fetchOnly=true` : `?fetchOnly=true`)*/
+        let requestTo = (cachedLocation || url) + req.originalUrl/* + (req.originalUrl.includes(`?`) ? `&fetchOnly=true` : `?fetchOnly=true`)*/
+
+        if(seek) {
+            let oldUrl = `${requestTo}`
+            requestTo = requestTo.split(`?startTime=`)[0].split(`&startTime=`)[0];
+            if(requestTo.includes(`?`)) {
+                requestTo += `&startTime=${seek}`
+            } else requestTo += `?startTime=${seek}`;
+            console.log(`SEEKING:\n- old url: ${oldUrl}\n- new url: ${requestTo}`)
+        }
 
         let params = {
             method: req.method.toString().toUpperCase(),
@@ -269,6 +278,20 @@ module.exports = async ({app, auth}) => {
         console.log(`${req.method.toString().toUpperCase()}/${requestTo}`)
 
         try {
+            const ffmpeg = ffmpegProc || require('child_process').spawn(`ffmpeg`, [`-i`, `-`, `-c:a`, `copy`, `-f`, `opus`, `/dev/null`, `-y`, `-hide_banner`]);
+
+            let lastTimestamp = seek || `00:00:00.00`;
+
+            if(ffmpeg && ffmpeg.stderr) ffmpeg.stderr.on(`data`, d => {
+                const log = d.toString().trim();
+
+                if(log.includes(`time=`)) {
+                    let previousTimestamp = `${lastTimestamp}`
+                    lastTimestamp = log.split(`time=`)[1].split(`bit`)[0].trim();
+                    console.log(`${previousTimestamp} -> ${lastTimestamp}`)
+                }
+            });
+
             const request = require('request')(params);
 
             let connectionClosed = false;
@@ -284,6 +307,8 @@ module.exports = async ({app, auth}) => {
             let totalChunkLength = 0;
     
             request.on(`data`, chunk => {
+                //res.write(chunk);
+                if(ffmpeg && ffmpeg.stdin && ffmpeg.stdin.write) ffmpeg.stdin.write(chunk)
                 totalChunkLength += chunk.length
             });
 
@@ -323,10 +348,10 @@ module.exports = async ({app, auth}) => {
                     console.log(`Attempted to destroy request!`)
                 } catch(e) {
                     console.warn(`Failed to destroy proxy request! ${e}`)
-                }
+                };
     
                 if(!connectionClosed) {
-                    console.warn(`Connection was aborted (${err}) -- connection looks to be still active!`);
+                    console.log(`Connection was aborted (${err}) -- connection looks to be still active!`);
 
                     const ip = url.split(`//`)[1].split(`:`)[0];
                     
@@ -337,35 +362,14 @@ module.exports = async ({app, auth}) => {
                         console.log(`location ${ip} found! (index ${index})`)
                         clearTimeout(pool[index].timeout);
                         pool.splice(index, 1);
-                    }
+                    };
 
-                    run(req, res, specifiedUrl).catch(e => {
-                        setTimeout(() => {
-                            console.log(`re-running! (error: ${e})`)
-                            run(req, res, specifiedUrl).catch(e => {
-                                setTimeout(() => {
-                                    console.log(`re-running! (error: ${e})`)
-                                    run(req, res, specifiedUrl).catch(e => {
-                                        setTimeout(() => {
-                                            console.log(`re-running! (error: ${e})`)
-                                            run(req, res, specifiedUrl).catch(e => {
-                                                setTimeout(() => {
-                                                    console.log(`re-running! (error: ${e})`)
-                                                    run(req, res, specifiedUrl).catch(e => {
-                                                        setTimeout(() => {
-                                                            console.log(`re-running! (error: ${e})`)
-                                                            run(req, res, specifiedUrl).catch(e2 => {
-                                                                console.error(e2)
-                                                            })
-                                                        }, 800)
-                                                    })
-                                                }, 800)
-                                            })
-                                        }, 800)
-                                    })
-                                }, 800)
-                            })
-                        }, 800)
+                    if(ffmpeg && ffmpeg.stderr) ffmpeg.stderr.removeAllListeners()
+
+                    let rerunArgs = [req, res, null, lastTimestamp, ffmpeg];
+
+                    run(...rerunArgs).catch(e => {
+                        console.error(e)
                     })
                 } else {
                     console.error(`error occured in stack for ${requestTo}: ${err}`, err && err.stack ? err.stack : err);
@@ -380,6 +384,8 @@ module.exports = async ({app, auth}) => {
     
             request.once(`close`, () => {
                 try {
+                    connectionClosed = true;
+                    if(request) request.removeAllListeners();
                     if(request && request.req && request.req) request.req.destroy()
                     if(request && request.destroy) request.destroy()
                     console.log(`Attempted to destroy request!`)
