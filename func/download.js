@@ -292,7 +292,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         `-y`
                     ];
 
-                    const streaming = args.indexOf(`-o`) == -1 || (!fs.existsSync(location) && startTimeArg) ? true : false
+                    const streaming = true
 
                     if(streaming) {
                         console.log(`STREAMING OUTPUT`)
@@ -331,7 +331,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         getLastPercent: () => lastPercent
                     };
 
-                    if(!json.nyxData.livestream) processes[json.url] = returnJson
+                    if(!streaming) processes[json.url] = returnJson
 
                     let sent = false;
 
@@ -359,10 +359,11 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     let t = 0;
 
                     if(streaming) {
-                        returnJson.stream = returnJson.stdout
+                        returnJson.stream = new (require('stream')).PassThrough()
 
                         f.stdout.on(`data`, d => {
                             t++;
+                            returnJson.stream.write(d)
                             if(t >= 2) sendBack();
                         })
                     } else {                        
