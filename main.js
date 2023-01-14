@@ -322,6 +322,8 @@ module.exports = async ({app, auth}) => {
                     console.warn(`Failed to destroy proxy request! ${e}`)
                 }
             });
+    
+            let errored = false;
 
             req.once(`error`, console.error)
     
@@ -332,12 +334,15 @@ module.exports = async ({app, auth}) => {
                     if(request && request.req && request.req) request.req.destroy()
                     if(request && request.destroy) request.destroy()
                     console.log(`Attempted to destroy request!`)
+
+                    if(!errored && ffmpeg) {
+                        console.log(`no error & ffmpeg is active! destroying stdin...`);
+                        ffmpeg.stdin.destroy();
+                    }
                 } catch(e) {
                     console.warn(`Failed to destroy proxy request! ${e}`)
                 }
             });
-    
-            let errored = false;
     
             request.on(`error`, (err) => {
                 errored = true;
@@ -388,7 +393,12 @@ module.exports = async ({app, auth}) => {
                     if(request) request.removeAllListeners();
                     if(request && request.req && request.req) request.req.destroy()
                     if(request && request.destroy) request.destroy()
-                    console.log(`Attempted to destroy request!`)
+                    console.log(`Attempted to destroy request!`);
+
+                    if(!errored && ffmpeg) {
+                        console.log(`no error & ffmpeg is active! destroying stdin...`);
+                        ffmpeg.stdin.destroy();
+                    }
                 } catch(e) {
                     console.warn(`Failed to destroy proxy request! ${e}`)
                 }
