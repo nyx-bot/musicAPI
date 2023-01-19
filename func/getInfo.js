@@ -112,13 +112,13 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
     
                     if(input && noDownload != true && input.entries[0] && !input.entries[0].nyxData.livestream && input.extractor != `generic`) {
                         console.log(`Downloading on getInfo request enabled!`);
-                        /*require('./download')({
+                        require('./download')({
                             link: input.entries[0],
                             keys,
                             waitUntilComplete: false,
                             returnInstantly: true,
-                            //forceYtdlp: true,
-                        })*/
+                            forceYtdlp: true,
+                        })
                     }
     
                     res(obj)
@@ -163,13 +163,13 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
     
                 if(input && noDownload != true && !json.nyxData.livestream && input.extractor != `generic`) {
                     console.log(`Downloading on getInfo request enabled!`);
-                    /*require('./download')({
+                    require('./download')({
                         link: input,
                         keys,
                         waitUntilComplete: false,
                         returnInstantly: true,
-                        //forceYtdlp: true,
-                    })*/
+                        forceYtdlp: true,
+                    })
                 }
     
                 res(json);
