@@ -313,6 +313,8 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                     let f = require('child_process').spawn(`ffmpeg`, ffmpegArgs);
 
+                    let allowAbort = true;
+
                     const returnJson = {
                         domain, 
                         id, 
@@ -323,7 +325,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         proc: f,
                         seeked: startTimeArg ? true : false,
                         abort: () => {
-                            if(f) {
+                            if(f && allowAbort) {
                                 console.log(`Abort signal received!`);
                                 delete processes[json.url];
                                 f.kill();
@@ -366,6 +368,10 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         console.log(`FFmpeg download proc closed with code ${code} / signal ${sig}`)
                         if(sig == `SIGSEGV` || Number(code) > 0) {
                             if(!formatOverride) {
+                                if(returnJson.writeStream) {
+                                    returnJson.writeStream.destroy()
+                                    if(fs.existsSync(location)) fs.rmSync(location)
+                                }
                                 useFFmpeg(`opus`).then(res2).catch(rej2)
                             } else rej()
                         } else {
@@ -379,13 +385,32 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     let t = 0;
 
                     if(streaming) {
-                        returnJson.stream = f.stdout
+                        //returnJson.stream = f.stdout
+                        returnJson.stream = new (require('stream')).PassThrough();
+
+                        f.stdout.on(`data`, d => returnJson.stream.write(d));
+                        f.once(`close`, () => returnJson.stream.destroy());
 
                         f.stderr.on(`data`, d => {
                             t++;
-                            //returnJson.stream.write(d)
                             if(t >= 2) sendBack(false, `log 2x streaming`);
-                        })
+                        });
+
+                        if(!fs.existsSync(location)) {
+                            allowAbort = false;
+
+                            returnJson.abort = () => {
+                                console.log(`abort was called, but was removed from this ffmpeg download instance because it is also downloading to cache!`);
+                            };
+
+                            returnJson.writeStream = fs.createWriteStream(location, {
+                                flags: `w`
+                            });
+
+                            //f.stderr.on(`data`, d => write.write(d));
+                            f.stdout.pipe(returnJson.writeStream)
+                            f.stderr.once(`close`, () => returnJson.writeStream.destroy());
+                        }
                     } else {                        
                         returnJson.location = location
 
@@ -413,6 +438,10 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         //console.log(d.toString().trim())
 
                         if((d.toString().trim().includes(`Invalid argument`) || d.toString().trim().includes(`Invalid data found`) || d.toString().trim().includes(`Unsupported codec id`)) && format.from != `override`) {
+                            if(returnJson.writeStream) {
+                                returnJson.writeStream.destroy()
+                                if(fs.existsSync(location)) fs.rmSync(location)
+                            }
                             useFFmpeg(`opus`).then(res2).catch(rej2)
                         } else if(d.toString().trim().includes(`Error`)) {
                             returnJson.abort();
