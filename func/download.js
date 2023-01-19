@@ -8,13 +8,19 @@ const util = require('../util');
 
 let processes = {};
 
-const ffmpegFormats = require('child_process').execSync(`ffmpeg -formats`).toString().split(`\n`).map(s => s.trim().slice(4).split(` `)[0]).filter(s => s.length > 0 ? true : false);
+let ffmpegFormats = null;
 
 module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, forceYtdlp}) => new Promise(async (res, rej) => {
     const times = {
         start: Date.now(),
         firstPipe: Date.now(),
         finish: Date.now(),
+    }
+
+    if(!ffmpegFormats) try {
+        ffmpegFormats = require('child_process').execSync(`ffmpeg -formats`).toString().split(`\n`).map(s => s.trim().slice(4).split(` `)[0]).filter(s => s.length > 0 ? true : false);
+    } catch(e) {
+        console.warn(`Failed to get FFmpeg formats: ${e}`)
     }
 
     const ytdl = keys.clients.ytdl;
@@ -92,6 +98,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                 const { useFormat, downloaderArgs, format_id } = require(`../util`).findBestAudioQuality(json)
 
                 let args = [
+                    json.url,
                     //`--no-keep-video`,
                     //`--extract-audio`,
                     //`--audio-format`, `opus`,
@@ -129,7 +136,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
     
                     console.log(`EXECUTING yt-dlp WITH ARGUMENTS "${args.join(` `)}"${seeking ? `\n\n-------- SEEKING THROUGH YT-DLP FFMPEG ARGS, EXPERIMENTAL --------\n\n` : ``}`)
     
-                    const run = args.indexOf(`-o`) == -1 ? `execStream` : `exec`
+                    const run = args.indexOf(`-o`) == -1 ? `execStream` : `exec`;
     
                     let playback = ytdl[run](args, {}, abort.signal);
     
@@ -270,9 +277,6 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         format.from = `exact match of yt-dlp's audio_ext (${useFormat.audio_ext}) result, found by splitting ffmpeg group of codecs`
                     };
 
-                    let headersArr = [];
-                    headers.forEach(h => headersArr.unshift(`-headers`, h));
-
                     if(json.abr && !useFormat.abr) useFormat.abr = json.abr;
                     
                     if(!useFormat.abr) useFormat.abr = 384;
@@ -280,8 +284,10 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                     console.log(`Using ffmpeg output format ${format.type} from ${format.from} (acodec: ${useFormat.acodec})`)
 
+                    console.log(`Headers:`, headers)
+
                     let ffmpegArgs = [
-                        ...headersArr,
+                        ...(headers.length > 0 ? [`-headers`, headers.join(`\r\n`) + `\r\n`] : []),
                         `-i`, useFormat && useFormat.url ? useFormat.url : json && json.url ? json.url : input,
                         //...(args.find(s => s.startsWith(`ffmpeg:`)) ? args.find(s => s.startsWith(`ffmpeg:`)).replace(`ffmpeg:`, ``).trim().split(` `) : []),
                         ...(startTimeArg ? [`-ss`, `${startTimeArg}`] : []),
@@ -289,7 +295,8 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         `-ar`, `48000`,
                         ...(json.streamAbr ? [`-b:a`, `${json.streamAbr}k`] : json.abr ? [`-b:a`, `${json.abr > 400 ? 384 : json.abr}k`] : [`-b:a`, `384k`]),
                         `-vn`,
-                        `-y`
+                        `-y`,
+                        //`-v`, `trace`
                     ];
 
                     const streaming = true
@@ -338,24 +345,35 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                     let stderr = ``, stderrCache;
 
-                    let sendBack = (closed) => {
+                    let sendBack = (closed, source) => {
                         if(!sent && ((waitUntilComplete && closed) || !waitUntilComplete)) {
-                            times.firstPipe = Date.now()
-                            console.log(`Sent back JSON`)
-                            //console.log(`Readable now, here's stderr:`, stderr);
-                            stderrCache = stderr;
-                            stderr = null;
-                            sent = true;
-                            return res2(returnJson)
+                            if(stderr.split(`\n`).filter(s => s && !s.startsWith(`  `) && !s.startsWith(`ffmpeg version`)).length === 0) {
+                                console.log(`There is no stream! Letting error event handler take this...`);
+                            } else {
+                                times.firstPipe = Date.now()
+                                console.log(`Sent back JSON (from: ${source})`)
+                                //console.log(`Readable now, here's stderr:`);
+                                stderrCache = stderr;
+                                stderr = null;
+                                sent = true;
+                                if(closed) logData(`FFmpeg`)
+                                return res2(returnJson)
+                            }
                         }
                     };
 
-                    f.once(`close`, () => {
-                        f = null;
-                        times.finish = Date.now();
-                        if(returnJson.stream) returnJson.stream.end()
-                        sendBack(true)
-                        logData(`FFmpeg`)
+                    f.once(`close`, (code, sig) => {
+                        console.log(`FFmpeg download proc closed with code ${code} / signal ${sig}`)
+                        if(sig == `SIGSEGV` || Number(code) > 0) {
+                            if(!formatOverride) {
+                                useFFmpeg(`opus`).then(res2).catch(rej2)
+                            } else rej()
+                        } else {
+                            f = null;
+                            times.finish = Date.now();
+                            if(returnJson.stream) returnJson.stream.end()
+                            sendBack(true, `close`)
+                        }
                     })
 
                     let t = 0;
@@ -365,8 +383,8 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                         f.stderr.on(`data`, d => {
                             t++;
-                            returnJson.stream.write(d)
-                            if(t >= 2) sendBack();
+                            //returnJson.stream.write(d)
+                            if(t >= 2) sendBack(false, `log 2x streaming`);
                         })
                     } else {                        
                         returnJson.location = location
@@ -384,7 +402,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                                 if(t == 0) times.firstPipe = Date.now();
                                 t++;
                                 console.log(`FFMPEG DOWNLOAD | ` + `size=` + log.split(`size=`)[1]);
-                                if(t >= 2) sendBack();
+                                if(t >= 2) sendBack(false, `log 2x`);
                             }
                         })
                     }
