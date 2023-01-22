@@ -5,90 +5,92 @@ const ffprobePath = require('child_process').execSync(`which ffprobe`).toString(
 console.log(`Using ffprobe path: "${ffprobePath}"`)
 
 util.findBestAudioQuality = (json) => {
-     let format_id, downloaderArgs = [];
+     let format_id = null, downloaderArgs = [], useFormat = null;
 
-     let audioBitrates = json.formats.filter(o => {
-         return !isNaN(o.abr) && o.abr > 1 && (o.asr || 0) <= 49000
-     }).sort((a,b) => {
-         const abitrate = a.abr * (a.asr || 1), bbitrate = b.abr * (b.asr || 1);
-         console.log(`A-ABR: ${a.abr} / ${a.asr || 1} / ${abitrate} | B-ABR: ${b.abr} / ${b.asr || 1} / ${bbitrate}`)
-         if(abitrate > bbitrate) {
-             return -1
-         } else if(abitrate < bbitrate) {
-             return 1
-         } else return 0
-     }), bestAudio = audioBitrates[0];
-
-     if(!bestAudio) {
-         if(json.formats.length > 0) {
-             //return rej(`Unable to stream audio! (There are no audio streams available!)`)
-             console.warn(`THERE ARE NO DIRECT AUDIO STREAMS AVAILABLE -- trying highest quality...`);
-
-             audioBitrates = json.formats.sort((a,b) => {
-                 const abitrate = a.tbr, bbitrate = b.tbr;
-                 console.log(`A-TBR: ${abitrate} | B-TBR: ${bbitrate}`)
-                 if(abitrate > bbitrate) {
-                     return -1
-                 } else if(abitrate < bbitrate) {
-                     return 1
-                 } else return 0
-             }); bestAudio = audioBitrates[0]
-         }/* else {
-             return rej(`Unable to stream audio! (This source is not allowing me to play anything!)`)
-         }*/
-     };
-
-     const bestAudioWithoutVideo = audioBitrates.filter(o => typeof o.vbr != `number`)[0];
-
-     if(bestAudio) console.log(`best audio bitrate: ${bestAudio.abr} with sampling rate of ${bestAudio.asr}`);
-
-     if(bestAudioWithoutVideo) console.log(`best audio bitrate (without video): ${bestAudioWithoutVideo.abr} with sampling rate of ${bestAudioWithoutVideo.asr}`);
-
-     if(bestAudio && bestAudioWithoutVideo && bestAudio.abr && bestAudio.abr == bestAudioWithoutVideo.abr && bestAudio.asr == bestAudioWithoutVideo.asr) {
-         console.log(`bestAudio is equivalent to bestAudioWithoutVideo, using without video!`);
-         format_id = bestAudioWithoutVideo.format_id
-     } else {
-         if(bestAudio && bestAudioWithoutVideo) console.log(`bestAudio is NOT equivalent to bestAudioWithoutVideo (${bestAudio.abr} / ${bestAudio.asr} > ${bestAudioWithoutVideo.abr} / ${bestAudioWithoutVideo.asr})`);
-         
-         let difference = bestAudio && bestAudio.abr ? bestAudio.abr * (bestAudio.asr || 1) - (bestAudioWithoutVideo || {abr : 0}).abr * ((bestAudioWithoutVideo || {asr: 0}).asr || 1) : -11000;
-
-         if(difference < 10000 && difference > -10000) {
-             console.log(`difference is less than 10kbps off, using audio anyways! (${`${difference}`.replace(`-`, ``)})\n| FORMAT: ${bestAudioWithoutVideo.format_id}`);
-             format_id = bestAudioWithoutVideo.format_id
-         } else {
-             console.log(`difference is too high! (${`${difference}`.replace(`-`, ``)}) -- using video and extracting audio\n| FORMAT: ${bestAudio && bestAudio.format_id ? bestAudio.format_id : `NONE, YT-DLP IS ON ITS OWN THIS TIME`}`)
-             if(bestAudio && bestAudio.format_id) {
-                 format_id = bestAudio.format_id
-                 downloaderArgs.push(`--no-keep-video`);
-
-                 /*if(startTimeArg) {
-                     downloaderArgs.push(`--downloader`, `ffmpeg`, `--downloader-args`, `ffmpeg:-ss ${startTimeArg}`);
-                 }*/
-             } else {
-                 downloaderArgs.push(`--downloader`, `ffmpeg`);
-
-                 let ffmpegArgs = `-vn`;
-
-                 /*if(startTimeArg) {
-                     ffmpegArgs = ffmpegArgs + ` -ss ${startTimeArg}`;
-                     seeking = true;
-                 }*/
-
-                 downloaderArgs.push(`--downloader-args`, `ffmpeg:${ffmpegArgs}`)
-                 //downloaderArgs.push(`--compat-options`, `multistreams`)
-                 //downloaderArgs.push(`--dump-single-json`, `--no-simulate`)
-             }
-         }
-     };
-
-     const useFormat = json.formats.find(o => o.format_id == format_id);
-
-     if(useFormat && useFormat.abr && !json.abr) {
-          json.abr = useFormat.abr
-     };
-
-     json.streamAbr = (Number(json.abr) || 384) > 384 ? 384 : (json.abr || 384);
-
+     if(json.formats && json.formats.length > 0) {
+          let audioBitrates = json.formats.filter(o => {
+              return !isNaN(o.abr) && o.abr > 1 && (o.asr || 0) <= 49000
+          }).sort((a,b) => {
+              const abitrate = a.abr * (a.asr || 1), bbitrate = b.abr * (b.asr || 1);
+              console.log(`A-ABR: ${a.abr} / ${a.asr || 1} / ${abitrate} | B-ABR: ${b.abr} / ${b.asr || 1} / ${bbitrate}`)
+              if(abitrate > bbitrate) {
+                  return -1
+              } else if(abitrate < bbitrate) {
+                  return 1
+              } else return 0
+          }), bestAudio = audioBitrates[0];
+     
+          if(!bestAudio) {
+              if(json.formats.length > 0) {
+                  //return rej(`Unable to stream audio! (There are no audio streams available!)`)
+                  console.warn(`THERE ARE NO DIRECT AUDIO STREAMS AVAILABLE -- trying highest quality...`);
+     
+                  audioBitrates = json.formats.sort((a,b) => {
+                      const abitrate = a.tbr, bbitrate = b.tbr;
+                      console.log(`A-TBR: ${abitrate} | B-TBR: ${bbitrate}`)
+                      if(abitrate > bbitrate) {
+                          return -1
+                      } else if(abitrate < bbitrate) {
+                          return 1
+                      } else return 0
+                  }); bestAudio = audioBitrates[0]
+              }/* else {
+                  return rej(`Unable to stream audio! (This source is not allowing me to play anything!)`)
+              }*/
+          };
+     
+          const bestAudioWithoutVideo = audioBitrates.filter(o => typeof o.vbr != `number`)[0];
+     
+          if(bestAudio) console.log(`best audio bitrate: ${bestAudio.abr} with sampling rate of ${bestAudio.asr}`);
+     
+          if(bestAudioWithoutVideo) console.log(`best audio bitrate (without video): ${bestAudioWithoutVideo.abr} with sampling rate of ${bestAudioWithoutVideo.asr}`);
+     
+          if(bestAudio && bestAudioWithoutVideo && bestAudio.abr && bestAudio.abr == bestAudioWithoutVideo.abr && bestAudio.asr == bestAudioWithoutVideo.asr) {
+              console.log(`bestAudio is equivalent to bestAudioWithoutVideo, using without video!`);
+              format_id = bestAudioWithoutVideo.format_id
+          } else {
+              if(bestAudio && bestAudioWithoutVideo) console.log(`bestAudio is NOT equivalent to bestAudioWithoutVideo (${bestAudio.abr} / ${bestAudio.asr} > ${bestAudioWithoutVideo.abr} / ${bestAudioWithoutVideo.asr})`);
+              
+              let difference = bestAudio && bestAudio.abr ? bestAudio.abr * (bestAudio.asr || 1) - (bestAudioWithoutVideo || {abr : 0}).abr * ((bestAudioWithoutVideo || {asr: 0}).asr || 1) : -11000;
+     
+              if(difference < 10000 && difference > -10000) {
+                  console.log(`difference is less than 10kbps off, using audio anyways! (${`${difference}`.replace(`-`, ``)})\n| FORMAT: ${bestAudioWithoutVideo.format_id}`);
+                  format_id = bestAudioWithoutVideo.format_id
+              } else {
+                  console.log(`difference is too high! (${`${difference}`.replace(`-`, ``)}) -- using video and extracting audio\n| FORMAT: ${bestAudio && bestAudio.format_id ? bestAudio.format_id : `NONE, YT-DLP IS ON ITS OWN THIS TIME`}`)
+                  if(bestAudio && bestAudio.format_id) {
+                      format_id = bestAudio.format_id
+                      downloaderArgs.push(`--no-keep-video`);
+     
+                      /*if(startTimeArg) {
+                          downloaderArgs.push(`--downloader`, `ffmpeg`, `--downloader-args`, `ffmpeg:-ss ${startTimeArg}`);
+                      }*/
+                  } else {
+                      downloaderArgs.push(`--downloader`, `ffmpeg`);
+     
+                      let ffmpegArgs = `-vn`;
+     
+                      /*if(startTimeArg) {
+                          ffmpegArgs = ffmpegArgs + ` -ss ${startTimeArg}`;
+                          seeking = true;
+                      }*/
+     
+                      downloaderArgs.push(`--downloader-args`, `ffmpeg:${ffmpegArgs}`)
+                      //downloaderArgs.push(`--compat-options`, `multistreams`)
+                      //downloaderArgs.push(`--dump-single-json`, `--no-simulate`)
+                  }
+              }
+          };
+     
+          useFormat = json.formats.find(o => o.format_id == format_id);
+     
+          if(useFormat && useFormat.abr && !json.abr) {
+               json.abr = useFormat.abr
+          };
+     
+          json.streamAbr = (Number(json.abr) || 384) > 384 ? 384 : (json.abr || 384);
+     }
+     
      return {
           useFormat,
           format_id,

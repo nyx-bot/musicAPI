@@ -54,8 +54,17 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
                 if(!input.uploader_url && input.entries.find(o => o.channel_url != null)) {
                     input.uploader_url = input.entries.find(o => o.channel_url != null).channel_url
                 }
-    
-                if(!input.entries[0].duration && !retried) {
+
+                /*if(!input.entries[0].formats && !retried) {
+                    console.log(`Formats is missing on entries! (${input.entries.filter(o => o.formats).length} entries has formats)`, input.entries[0]);
+                    retried = true;
+                    return ytdl.execPromise(`${link} --dump-single-json --skip-download`.split(` `)).then(i => {
+                        processInfo(JSON.parse(i))
+                    }).catch(e => {
+                        console.error(e);
+                        res(null)
+                    });
+                } else*/ if(!input.entries[0].duration && !retried) {
                     console.log(`Duration is missing on entries! (${input.entries.filter(o => o.duration).length} entries has duration)`, input.entries[0]);
                     retried = true;
                     return ytdl.execPromise(`${link} --dump-single-json --skip-download`.split(` `)).then(i => {
