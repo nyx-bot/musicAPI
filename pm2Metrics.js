@@ -15,8 +15,6 @@ module.exports = async (metrics) => {
     while(true) {
         for (o of Object.entries(metrics)) {
             if(o[0] == `streams` && metrics.type == 1) o[0] = `fallbackStreams`;
-
-            if(metrics.type == 1) console.log(`Updating metric: ${o[0]} -- ${o[1]}`)
             
             if(!pm2Metrics[o[0]]) pm2Metrics[o[0]] = io.metric({
                 name: o[0]
