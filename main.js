@@ -7,6 +7,13 @@ let fallback = false;
 
 let blacklistedIps = [];
 
+global.metrics = {
+    type: 1,
+    connections: 0,
+};
+
+require(`./pm2Metrics`)(global.metrics);
+
 module.exports = async ({app, auth}) => {
     let pool = []; let i = 0;
 
@@ -232,6 +239,8 @@ module.exports = async ({app, auth}) => {
     const run = (req, res, specifiedUrl, seek, ffmpegProc) => new Promise(async (resp, rej) => {
         const started = Date.now();
 
+        if(!ffmpegProc) global.metrics.connections++;
+
         const cachedLocation = getCachedLocation(req, endpoints.find(s => s == req.originalUrl.split(`/`)[1]));
 
         var url = specifiedUrl || getUrl();
@@ -330,6 +339,7 @@ module.exports = async ({app, auth}) => {
             req.once('close', () => {
                 connectionClosed = true;
                 console.log(`outside request closed connection!`);
+                if(global.metrics.connections > 0 && !ffmpegProc) global.metrics.connections--;
                 try {
                     if(request && request.req && request.req) request.req.destroy()
                     if(request && request.destroy) request.destroy()

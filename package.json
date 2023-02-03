@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@pm2/io": "^5.0.0",
     "body-parser": "^1.20.1",
     "cloneable-readable": "^3.0.0",
     "cron": "^2.1.0",

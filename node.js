@@ -2,6 +2,13 @@ const keyFetch = require('./getKeys.js');
 const fs = require('fs')
 const endpoints = fs.readdirSync(`./lib/`);
 
+global.metrics = {
+    type: 2,
+    streams: 0
+};
+
+require(`./pm2Metrics`)(global.metrics);
+
 module.exports = ({app, auth}) => {
     let spotify;
     
