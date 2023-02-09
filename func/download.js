@@ -6,11 +6,11 @@ const fs = require('fs')
 
 const util = require('../util');
 
-let processes = {};
+global.processes = {};
 
 let ffmpegFormats = null;
 
-module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, forceYtdlp}) => new Promise(async (res, rej) => {
+module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, forceYtdlp, forceStream}) => new Promise(async (res, rej) => {
     const times = {
         start: Date.now(),
         firstPipe: Date.now(),
@@ -72,6 +72,12 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
         };
 
         if(!json || !json.url) return rej(`No streamable link! (input: ${input})`, json);
+
+        if(forceStream) json = Object.assign({}, json, {
+            nyxData: {
+                livestream: true,
+            }
+        })
 
         const jsonFileID = require(`../util`).idGen(8);
 

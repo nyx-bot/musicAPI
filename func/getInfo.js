@@ -2,7 +2,7 @@ const fs = require('fs');
 
 const { ffprobe } = require('../util');
 
-module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
+module.exports = (link, keys, noDownload, waitForDownload) => new Promise(async (res, rej) => {
     const origLink = `${link}`
 
     const ytdl = keys.clients.ytdl;
@@ -121,16 +121,17 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
     
                     if(input && noDownload != true && input.entries[0] && !input.entries[0].nyxData.livestream && input.extractor != `generic`) {
                         console.log(`Downloading on getInfo request enabled!`);
-                        require('./download')({
+                        const a = await require('./download')({
                             link: input.entries[0],
                             keys,
-                            waitUntilComplete: false,
-                            returnInstantly: true,
+                            waitUntilComplete: true,
+                            returnInstantly: false,
                             forceYtdlp: true,
-                        })
+                        });
+                        if(waitForDownload) res(obj)
                     }
     
-                    res(obj)
+                    if(!waitForDownload) res(obj)
                 }
             } else {
                 const json = input;
@@ -172,16 +173,17 @@ module.exports = (link, keys, noDownload) => new Promise(async (res, rej) => {
     
                 if(input && noDownload != true && !json.nyxData.livestream && input.extractor != `generic`) {
                     console.log(`Downloading on getInfo request enabled!`);
-                    require('./download')({
+                    const a = await require('./download')({
                         link: input,
                         keys,
-                        waitUntilComplete: false,
-                        returnInstantly: true,
+                        waitUntilComplete: true,
+                        returnInstantly: false,
                         forceYtdlp: true,
-                    })
+                    });
+                    if(waitForDownload) res(json)
                 }
     
-                res(json);
+                if(!waitForDownload) res(json);
             }
         }
     }
