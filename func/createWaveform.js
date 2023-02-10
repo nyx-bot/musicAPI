@@ -49,6 +49,12 @@ module.exports = ({id, location, info, length}) => new Promise(async (resolve, r
         if(info) waveforms[info.id] = waveformPromise;
         if(info) waveforms[info.url] = waveformPromise;
 
+        if(info && !location) {
+            if(fs.existsSync(`./etc/${json.extractor}/`) && fs.readdirSync(`./etc/${json.extractor}/`).find(f => f.startsWith(json.id))) {
+                location = `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${json.extractor}/${fs.readdirSync(`./etc/${json.extractor}/`).find(f => f.startsWith(json.id))}`
+            }
+        }
+
         let spawn;
 
         let parsed = false;
@@ -115,6 +121,8 @@ module.exports = ({id, location, info, length}) => new Promise(async (resolve, r
             }),
             ffmpegProxy: () => new Promise(async res => {
                 console.log(`[WAVEFORM] CREATING FFMPEG STREAM FOR WAVEFORM`)
+
+                if(!location) return res(false)
     
                 spawn = require('child_process').spawn(`audiowaveform`, [`--input-format`, `mp3`, `-i`, `-`, ...args]);
     
