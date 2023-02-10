@@ -89,9 +89,10 @@ module.exports = ({id, location, info, length}) => {
             const methods = {
                 rawLocation: () => new Promise(async res => {
                     console.log(`[WAVEFORM] USING FILE LOCATION FOR WAVEFORM`)
+                    return res(false)
                     if(location) {
                         try {
-                            spawn = require('child_process').spawn(`audiowaveform`, [`-i`, location, ...args])
+                            spawn = require('child_process').spawn(`audiowaveform`, [`--input-format`, `mp3`, `-i`, location, ...args])
             
                             spawn.on(`error`, () => {
                                 console.warn(`Failed to get stream from raw audio file:`, e);
@@ -118,12 +119,13 @@ module.exports = ({id, location, info, length}) => {
                 ffmpegProxy: () => new Promise(async res => {
                     console.log(`[WAVEFORM] CREATING FFMPEG STREAM FOR WAVEFORM`)
         
-                    spawn = require('child_process').spawn(`audiowaveform`, [`--input-format`, `opus`, `-i`, `-`, ...args]);
+                    spawn = require('child_process').spawn(`audiowaveform`, [`--input-format`, `mp3`, `-i`, `-`, ...args]);
         
                     const ffmpegArgs = [
                         `-i`, location, 
-                        `-f`, `opus`,
-                        `-ar`, `48000`,
+                        `-f`, `mp3`,
+                        `-ar`, `24000`,
+                        `-b:a`, `64k`,
                         `-`
                     ];
     
