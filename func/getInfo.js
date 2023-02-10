@@ -128,6 +128,14 @@ module.exports = (link, keys, noDownload, waitForDownload) => new Promise(async 
                             returnInstantly: false,
                             forceYtdlp: true,
                         });
+
+                        if(fs.existsSync(`./etc/${obj.extractor}/`) && fs.readdirSync(`./etc/${obj.extractor}/`).find(f => f.startsWith(obj.id))) {
+                            require(`./createWaveform`)({
+                                id: obj.id,
+                                info: obj,
+                                location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${obj.extractor}/${fs.readdirSync(`./etc/${obj.extractor}/`).find(f => f.startsWith(obj.id))}`
+                            })
+                        }
                         if(waitForDownload) res(obj)
                     }
     
@@ -180,6 +188,13 @@ module.exports = (link, keys, noDownload, waitForDownload) => new Promise(async 
                         returnInstantly: false,
                         forceYtdlp: true,
                     });
+                    if(fs.existsSync(`./etc/${json.extractor}/`) && fs.readdirSync(`./etc/${json.extractor}/`).find(f => f.startsWith(json.id))) {
+                        require(`./createWaveform`)({
+                            id: json.url,
+                            info: json,
+                            location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${json.extractor}/${fs.readdirSync(`./etc/${json.extractor}/`).find(f => f.startsWith(json.id))}`
+                        });
+                    } 
                     if(waitForDownload) res(json)
                 }
     

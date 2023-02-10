@@ -215,6 +215,14 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                     playback.once(`close`, () => {
                         times.finish = Date.now();
 
+                        if(fs.existsSync(`./etc/${domain}/`) && fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id))) {
+                            require(`./createWaveform`)({
+                                id: json.id,
+                                info: json,
+                                location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id))}`
+                            })
+                        };
+
                         ytdlCompleted = true;
     
                         delete processes[json.url];
@@ -422,6 +430,15 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
 
                         f.on(`close`, (code, signal) => {
                             console.log(`download ffmpeg closed with code ${code} / sig ${signal}`);
+
+                            if(fs.existsSync(`./etc/${domain}/`) && fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id))) {
+                                require(`./createWaveform`)({
+                                    id: json.id,
+                                    info: json,
+                                    location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${domain}/${fs.readdirSync(`./etc/${domain}/`).find(f => f.startsWith(json.id))}`
+                                })
+                            };
+
                             if(code == 1 && stderrCache) {
                                 console.log(stderrCache)
                             }
