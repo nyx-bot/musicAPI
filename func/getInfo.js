@@ -134,7 +134,7 @@ module.exports = (link, keys, noDownload, waitForDownload) => new Promise(async 
                                 id: obj.id,
                                 info: obj,
                                 location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${obj.extractor}/${fs.readdirSync(`./etc/${obj.extractor}/`).find(f => f.startsWith(obj.id))}`
-                            })
+                            }).then(() => console.log(`WAVEFORM FROM GETINFO OBJECT HAS SUCCEEDED!`)).catch(e => console.warn(`Failed to create waveform from getInfo object: ${e}`));
                         }
                         if(waitForDownload) res(obj)
                     }
@@ -193,7 +193,7 @@ module.exports = (link, keys, noDownload, waitForDownload) => new Promise(async 
                             id: json.url,
                             info: json,
                             location: `${__dirname.split(`/`).slice(0, -1).join(`/`)}/etc/${json.extractor}/${fs.readdirSync(`./etc/${json.extractor}/`).find(f => f.startsWith(json.id))}`
-                        });
+                        }).then(() => console.log(`WAVEFORM FROM GETINFO OBJECT HAS SUCCEEDED!`)).catch(e => console.warn(`Failed to create waveform from getInfo object: ${e}`));
                     } 
                     if(waitForDownload) res(json)
                 }
