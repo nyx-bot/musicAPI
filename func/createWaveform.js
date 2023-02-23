@@ -1,5 +1,7 @@
 let waveforms = {};
 
+const fs = require('fs')
+
 const parseData = (obj, length) => {
     if(!length || typeof length != `number`) length = 15
 
