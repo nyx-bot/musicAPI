@@ -21,7 +21,7 @@ module.exports = ({
         
         require(`../func/generalSong/${service}`)({
             title, artist, duration, keys
-        }).then(r => {
+        }).then(r => r.filter(o => o.length > 0)).then(r => {
             if(r[0] && !r[0].title && r[0][0] && r[0][0].title) r = r[0]
             if(r.length > 0) results[service.split(`.`).slice(0, -1).join(`.`)] = r.map(result => {
                 //console.log(result)

@@ -1,4 +1,4 @@
-const searchFunc = ({query, duration, keys}) => new Promise(async (res, rej) => {
+const searchFunc = ({query, duration}) => new Promise(async (res, rej) => {
     let ytsres, err = [], i = 0
 
     while(i < 3 && !ytsres) {
@@ -77,7 +77,9 @@ module.exports = ({
                 res(r)
             })
         }))
-    ])
+    ]);
+
+    console.log(results)
 
     return res(results)
 })
