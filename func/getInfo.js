@@ -125,7 +125,7 @@ module.exports = (link, keys, noDownload, waitForDownload) => new Promise(async 
                             link: input.entries[0],
                             keys,
                             waitUntilComplete: false,
-                            returnInstantly: false,
+                            returnInstantly: true,
                             forceYtdlp: true,
                         });
 
@@ -185,7 +185,7 @@ module.exports = (link, keys, noDownload, waitForDownload) => new Promise(async 
                         link: input,
                         keys,
                         waitUntilComplete: false,
-                        returnInstantly: false,
+                        returnInstantly: true,
                         forceYtdlp: true,
                     });
                     /*if(fs.existsSync(`./etc/${json.extractor}/`) && fs.readdirSync(`./etc/${json.extractor}/`).find(f => f.startsWith(json.id))) {

@@ -202,10 +202,9 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                             global.streamCache[input].nyxData.lastUpdate = Date.now();
                         };
                     };
-    
-                    if(returnInstantly) initialRun({percent: 1});
         
                     playback.on(json.nyxData.livestream ? `data` : `progress`, (progress) => {
+                        if(returnInstantly) initialRun({percent: 1});
                         initialRun(progress && typeof progress.percent == `number` ? progress : {percent: 1})
                         //console.log('processed ' + Math.round(progress.percent) + `% of ${domain}/${id.match(/[(\w\d)]*/g).filter(s => s && s != `` && s.length > 0).join(`-`)} at ${progress.currentKbps || `0`}kbps [${progress.timemark}]`);
                         if(progress.percent && Math.round(progress.percent || 0) != lastPercent) {
@@ -408,6 +407,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         f.once(`close`, () => returnJson.stream.destroy());
 
                         f.stderr.on(`data`, d => {
+                            if(returnInstantly) sendBack();
                             t++;
                             if(t >= 2) sendBack(false, `log 2x streaming`);
                         });
@@ -447,6 +447,7 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                         });
 
                         f.stderr.on(`data`, d => {
+                            if(returnInstantly) sendBack();
                             let log = d.toString().trim()
                             if(log.includes(`time=`) && log.includes(`speed=`)) {
                                 if(t == 0) times.firstPipe = Date.now();
@@ -456,8 +457,6 @@ module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, 
                             }
                         })
                     }
-
-                    if(returnInstantly) sendBack();
 
                     f.stderr.on(`data`, d => {
                         //console.log(d.toString().trim())
