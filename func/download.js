@@ -11,6 +11,8 @@ global.processes = {};
 let ffmpegFormats = null;
 
 module.exports = ({link: input, keys, waitUntilComplete, returnInstantly, seek, forceYtdlp, forceStream}) => new Promise(async (res, rej) => {
+    console.log(`Wait until complete? ${waitUntilComplete ? true : false}`)
+
     const times = {
         start: Date.now(),
         firstPipe: Date.now(),

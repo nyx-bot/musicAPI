@@ -13,7 +13,7 @@ global.sendPings = (process.argv.indexOf(`debug`) !== -1 || process.argv.indexOf
 console.log(`sendPings: ${global.sendPings}`)
 
 if(fs.existsSync(`./etc/`)) {
-    const subdirs = fs.readdirSync(`./etc/`).filter(entry => fs.existsSync(`./etc/${entry}/`));
+    const subdirs = fs.readdirSync(`./etc/`).filter(entry => fs.existsSync(`./etc/${entry}/`) && !entry.endsWith(`yt-dlp`));
     console.log(`${subdirs.length} subdirectories found! (${subdirs.join(`, `) || `--`})`)
     for(i of subdirs) {
         fs.rmSync(`./etc/${i}/`, {
@@ -25,7 +25,7 @@ if(fs.existsSync(`./etc/`)) {
         fs.rmSync(`./etc/${j}`)
     }
 
-    if(fs.existsSync(`./etc/yt-dlp`)) fs.rmSync(`./etc/yt-dlp`)
+    if(fs.existsSync(`./etc/yt-dlp`) && !fs.existsSync(`./etc/yt-dlp/`)) fs.rmSync(`./etc/yt-dlp`)
 }
 
 const update = () => new Promise((res, rej) => {

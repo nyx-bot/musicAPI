@@ -99,38 +99,103 @@ module.exports = (k) => new Promise(async res => {
             await new Promise(async res => {
                 let tmpYtdl = require(`yt-dlp-wrap`).default;
                 try {
-                    const latest = (await tmpYtdl.getGithubReleases(1))[0], assets = latest.assets;
-        
-                    const latestId = latest.id
-        
-                    ytdlPath = `${__dirname}/etc/yt-dlp-${latestId}`;
+                    ytdlPath = `${__dirname}/etc/yt-dlp`;
         
                     let list = fs.readdirSync(`./etc/`).filter(s => 
                         s.startsWith(`yt-dlp`) && 
                         !s.includes(`.`) &&
-                        !ytdlPath.includes(s) && 
-                        fs.existsSync(`./etc/${s}/`)
+                        //!ytdlPath.includes(s) && 
+                        !fs.existsSync(`./etc/${s}/`)
                     )
         
                     for (existing of list) {
-                        console.log(`Deleting yt-dlp at ${existing}`);
-                        fs.rmSync(`./etc/` + existing);
+                        if(!existing.endsWith(`/yt-dlp`)) {
+                            console.log(`Deleting yt-dlp at ${existing}`);
+                            fs.rmSync(`./etc/` + existing);
+                        }
                     };
-        
-                    if(!fs.existsSync(ytdlPath)) {
-                        tmpYtdl.downloadFromGithub( ytdlPath, latest.tag_name ).then(() => {
-                            if(fs.existsSync(ytdlPath)) {
-                                console.log(`successfully downloaded temporary binary!`)
-                            } else {
-                                console.log(`path has not been verified! youtube compatibility may be hindered`)
-                            };
-        
-                            res()
-                        })
-                    } else {
-                        console.log(`Latest yt-dlp exists! (v. ${latestId})`);
+
+                    const completeClone = () => {
+                        if(!ytdlPath.endsWith(`/yt-dlp.sh`)) ytdlPath = ytdlPath += `/yt-dlp.sh`;
+
+                        try {
+                            require(`child_process`).execSync(`chmod +x "${ytdlPath}"`);
+                            console.log(`[GIT] Successfully added execute permissions!`)
+                        } catch(e) {
+                            console.log(`[GIT] Failed adding execute permissions, yt-dlp may not work! (${e})`)
+                        }
+
                         res()
                     }
+
+                    const fallback = async () => {
+                        console.log(`Attempting to download yt-dlp from source!`)
+
+                        if(fs.existsSync(ytdlPath)) fs.rmSync(ytdlPath, {
+                            recursive: true
+                        })
+
+                        const clone = require(`child_process`).spawn(`git`, [`clone`, `https://github.com/yt-dlp/yt-dlp`, ytdlPath]);
+    
+                        console.log(`Cloning yt-dlp using git!`)
+    
+                        clone.stdout.on(`data`, d => console.log(`[GIT] ${d.toString().trim()}`));
+    
+                        let handled = false;
+    
+                        clone.once(`close`, () => {
+                            if(!handled) {
+                                handled = true;
+    
+                                completeClone()
+                            }
+                        })
+    
+                        clone.on(`error`, async e => {
+                            if(!handled) {
+                                handled = true;
+    
+                                console.warn(`Failed to download yt-dlp source! (${e})`);
+        
+                                const latest = (await tmpYtdl.getGithubReleases(1))[0], assets = latest.assets;
+                    
+                                const latestId = latest.id
+                                
+                                ytdlPath = `${__dirname}/etc/yt-dlp-${latestId}`;
+        
+                                if(!fs.existsSync(ytdlPath)) {
+                                    tmpYtdl.downloadFromGithub( ytdlPath, latest.tag_name ).then(() => {
+                                        if(fs.existsSync(ytdlPath)) {
+                                            console.log(`successfully downloaded temporary binary!`)
+                                        } else {
+                                            console.log(`path has not been verified! youtube compatibility may be hindered`)
+                                        };
+                    
+                                        res()
+                                    })
+                                } else {
+                                    console.log(`Latest yt-dlp exists! (v. ${latestId})`);
+                                    res()
+                                }
+                            }
+                        });
+                    }
+
+                    if(ytdlPath && fs.existsSync(ytdlPath)) {
+                        console.log(`Existing yt-dlp repo found!`);
+
+                        try {
+                            const pull = require(`child_process`).execSync(`git pull`);
+
+                            console.log(`[GIT] Pull success, stdout:\n[GIT] | ` + pull.toString().trim().split(`\n`).join(`\n[GIT] | `))
+
+                            completeClone()
+                        } catch(e) {
+                            console.warn(`[GIT] error while pulling: ${e}`);
+
+                            fallback()
+                        }
+                    } else fallback()
                 } catch(e) {
                     console.warn(`Unable to finish ytdl update!`, e);
     
@@ -146,7 +211,9 @@ module.exports = (k) => new Promise(async res => {
     
                     res()
                 }
-            })
+            });
+
+            console.log(`ytdlPath: ${ytdlPath}`)
         } catch(e) {
             console.warn(`failed to download yt-dlp: ${e}`);
             

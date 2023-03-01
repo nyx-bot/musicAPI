@@ -124,7 +124,7 @@ module.exports = (link, keys, noDownload, waitForDownload) => new Promise(async 
                         const a = await require('./download')({
                             link: input.entries[0],
                             keys,
-                            waitUntilComplete: true,
+                            waitUntilComplete: false,
                             returnInstantly: false,
                             forceYtdlp: true,
                         });
@@ -184,7 +184,7 @@ module.exports = (link, keys, noDownload, waitForDownload) => new Promise(async 
                     const a = await require('./download')({
                         link: input,
                         keys,
-                        waitUntilComplete: true,
+                        waitUntilComplete: false,
                         returnInstantly: false,
                         forceYtdlp: true,
                     });
