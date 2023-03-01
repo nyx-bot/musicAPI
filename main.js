@@ -287,7 +287,7 @@ module.exports = async ({app, auth}) => {
         console.log(`${req.method.toString().toUpperCase()}/${requestTo}`)
 
         try {
-            const ffmpeg = ffmpegProc || require('child_process').spawn(`ffmpeg`, [`-i`, `-`, `-c:a`, `copy`, `-f`, `opus`, `/dev/null`, `-y`, `-hide_banner`]);
+            const ffmpeg = ffmpegProc || require('child_process').spawn(`ffmpeg`, [`-i`, `-`, /*`-c:a`, `copy`, `-f`, `opus`,*/ `-f`, `opus`, `/dev/null`, `-y`, `-hide_banner`]);
 
             let lastTimestamp = seek || `00:00:00.00`;
 
@@ -298,7 +298,7 @@ module.exports = async ({app, auth}) => {
                     let previousTimestamp = `${lastTimestamp}`
                     lastTimestamp = log.split(`time=`)[1].split(`bit`)[0].trim();
                     console.log(`${previousTimestamp} -> ${lastTimestamp}`)
-                }
+                } else console.log(log.toString().trim())
             });
 
             const request = require('request')(params);
