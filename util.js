@@ -1,8 +1,11 @@
 const util = {};
 
-const ffprobePath = require('child_process').execSync(`which ffprobe`).toString().trim()
+let ffprobePath = null;
 
-console.log(`Using ffprobe path: "${ffprobePath}"`)
+(async () => {
+     ffprobePath = await require(`which`)(`ffprobe`);
+     console.log(`Using ffprobe path: "${ffprobePath}"`)
+})
 
 util.findBestAudioQuality = (json) => {
      let format_id = null, downloaderArgs = [], useFormat = null;
